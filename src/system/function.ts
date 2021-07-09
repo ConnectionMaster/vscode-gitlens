@@ -1,6 +1,6 @@
 'use strict';
-import { Disposable } from 'vscode';
 import { debounce as _debounce, once as _once } from 'lodash-es';
+import { Disposable } from 'vscode';
 
 export interface Deferrable<T extends (...args: any[]) => any> {
 	(...args: Parameters<T>): ReturnType<T> | undefined;
@@ -49,10 +49,10 @@ export function debounce<T extends (...args: any[]) => any>(
 	let pending = false;
 
 	const debounced = _debounce(
-		(function (this: any, ...args: any[]) {
+		function (this: any, ...args: any[]) {
 			pending = false;
 			return fn.apply(this, args);
-		} as any) as T,
+		} as any as T,
 		wait,
 		options,
 	);

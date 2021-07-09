@@ -1,18 +1,18 @@
 'use strict';
 import { ThemeIcon, TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { BranchesView } from '../branchesView';
-import { CommitsView } from '../commitsView';
-import { BranchComparison, BranchComparisons, GlyphChars, WorkspaceState } from '../../constants';
 import { ViewShowBranchComparison } from '../../configuration';
+import { BranchComparison, BranchComparisons, GlyphChars, WorkspaceState } from '../../constants';
 import { Container } from '../../container';
 import { GitBranch, GitRevision } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
 import { CommandQuickPickItem, ReferencePicker } from '../../quickpicks';
+import { debug, gate, log, Strings } from '../../system';
+import { BranchesView } from '../branchesView';
+import { CommitsView } from '../commitsView';
 import { RepositoriesView } from '../repositoriesView';
 import { RepositoryNode } from './repositoryNode';
 import { CommitsQueryResults, ResultsCommitsNode } from './resultsCommitsNode';
 import { FilesQueryResults, ResultsFilesNode } from './resultsFilesNode';
-import { debug, gate, log, Strings } from '../../system';
 import { ContextValues, ViewNode } from './viewNode';
 
 export class CompareBranchNode extends ViewNode<BranchesView | CommitsView | RepositoriesView> {
@@ -52,7 +52,7 @@ export class CompareBranchNode extends ViewNode<BranchesView | CommitsView | Rep
 		};
 	}
 
-	get id(): string {
+	override get id(): string {
 		return CompareBranchNode.getId(this.branch.repoPath, this.branch.name, this.root);
 	}
 
@@ -139,37 +139,42 @@ export class CompareBranchNode extends ViewNode<BranchesView | CommitsView | Rep
 	getTreeItem(): TreeItem {
 		let state: TreeItemCollapsibleState;
 		let label;
-		let description;
+		let tooltip;
 		if (this._compareWith == null) {
-			label = `Compare ${this.branch.name}${
-				this.compareWithWorkingTree ? ' (working)' : ''
+			label = `Compare ${
+				this.compareWithWorkingTree ? 'Working Tree' : this.branch.name
 			} with <branch, tag, or ref>`;
 			state = TreeItemCollapsibleState.None;
+			tooltip = `Click to compare ${
+				this.compareWithWorkingTree ? 'Working Tree' : this.branch.name
+			} with a branch, tag, or ref`;
 		} else {
-			label = `Compare ${this.branch.name}${this.compareWithWorkingTree ? ' (working)' : ''}`;
-			description = `with ${GitRevision.shorten(this._compareWith.ref, {
+			label = `Compare ${
+				this.compareWithWorkingTree ? 'Working Tree' : this.branch.name
+			} with ${GitRevision.shorten(this._compareWith.ref, {
 				strings: { working: 'Working Tree' },
 			})}`;
 			state = TreeItemCollapsibleState.Collapsed;
 		}
 
 		const item = new TreeItem(label, state);
-		item.command = {
-			title: `Compare ${this.branch.name}${this.compareWithWorkingTree ? ' (working)' : ''} with${
-				GlyphChars.Ellipsis
-			}`,
-			command: 'gitlens.views.executeNodeCallback',
-			arguments: [() => this.compareWith()],
-		};
+		item.id = this.id;
 		item.contextValue = `${ContextValues.CompareBranch}${this.branch.current ? '+current' : ''}+${
 			this.comparisonType
 		}${this._compareWith == null ? '' : '+comparing'}${this.root ? '+root' : ''}`;
-		item.description = description;
+
+		if (this._compareWith == null) {
+			item.command = {
+				title: `Compare ${this.branch.name}${this.compareWithWorkingTree ? ' (working)' : ''} with${
+					GlyphChars.Ellipsis
+				}`,
+				command: 'gitlens.views.editNode',
+				arguments: [this],
+			};
+		}
+
 		item.iconPath = new ThemeIcon('git-compare');
-		item.id = this.id;
-		item.tooltip = `Click to compare ${this.branch.name}${this.compareWithWorkingTree ? ' (working)' : ''} with${
-			GlyphChars.Ellipsis
-		}`;
+		item.tooltip = tooltip;
 
 		return item;
 	}
@@ -185,9 +190,14 @@ export class CompareBranchNode extends ViewNode<BranchesView | CommitsView | Rep
 		this.view.triggerNodeChange(this);
 	}
 
+	@log()
+	async edit() {
+		await this.compareWith();
+	}
+
 	@gate()
 	@debug()
-	refresh() {
+	override refresh() {
 		this._children = undefined;
 		this.loadCompareWith();
 	}

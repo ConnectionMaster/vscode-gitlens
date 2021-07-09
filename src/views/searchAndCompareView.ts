@@ -1,15 +1,22 @@
 'use strict';
 import { commands, ConfigurationChangeEvent, TreeItem, TreeItemCollapsibleState } from 'vscode';
+import { getRepoPathOrPrompt } from '../commands';
 import { configuration, SearchAndCompareViewConfig, ViewFilesLayout } from '../configuration';
 import { ContextKeys, NamedRef, PinnedItem, PinnedItems, setContext, WorkspaceState } from '../constants';
 import { Container } from '../container';
 import { GitLog, GitRevision, SearchPattern } from '../git/git';
-import { CompareResultsNode, ContextValues, SearchResultsNode, unknownGitUri, ViewNode } from './nodes';
-import { debug, gate, Iterables, log, Promises } from '../system';
-import { ViewBase } from './viewBase';
-import { ComparePickerNode } from './nodes/comparePickerNode';
 import { ReferencePicker, ReferencesQuickPickIncludes } from '../quickpicks';
-import { getRepoPathOrPrompt } from '../commands';
+import { debug, gate, Iterables, log, Promises } from '../system';
+import {
+	CompareResultsNode,
+	ContextValues,
+	ResultsFilesNode,
+	SearchResultsNode,
+	unknownGitUri,
+	ViewNode,
+} from './nodes';
+import { ComparePickerNode } from './nodes/comparePickerNode';
+import { ViewBase } from './viewBase';
 
 interface DeprecatedPinnedComparison {
 	path: string;
@@ -23,7 +30,7 @@ interface DeprecatedPinnedComparisons {
 }
 
 export class SearchAndCompareViewNode extends ViewNode<SearchAndCompareView> {
-	protected splatted = true;
+	protected override splatted = true;
 	private comparePicker: ComparePickerNode | undefined;
 
 	constructor(view: SearchAndCompareView) {
@@ -110,7 +117,7 @@ export class SearchAndCompareViewNode extends ViewNode<SearchAndCompareView> {
 
 	@gate()
 	@debug()
-	async refresh() {
+	override async refresh() {
 		if (this.children.length === 0) return;
 
 		const promises: Promise<any>[] = [
@@ -293,13 +300,28 @@ export class SearchAndCompareView extends ViewBase<SearchAndCompareViewNode, Sea
 
 		commands.registerCommand(this.getQualifiedCommand('pin'), this.pin, this);
 		commands.registerCommand(this.getQualifiedCommand('unpin'), this.unpin, this);
-		commands.registerCommand(this.getQualifiedCommand('edit'), this.edit, this);
 		commands.registerCommand(this.getQualifiedCommand('swapComparison'), this.swapComparison, this);
 		commands.registerCommand(this.getQualifiedCommand('selectForCompare'), this.selectForCompare, this);
 		commands.registerCommand(this.getQualifiedCommand('compareWithSelected'), this.compareWithSelected, this);
+
+		commands.registerCommand(
+			this.getQualifiedCommand('setFilesFilterOnLeft'),
+			n => this.setFilesFilter(n, 'left'),
+			this,
+		);
+		commands.registerCommand(
+			this.getQualifiedCommand('setFilesFilterOnRight'),
+			n => this.setFilesFilter(n, 'right'),
+			this,
+		);
+		commands.registerCommand(
+			this.getQualifiedCommand('setFilesFilterOff'),
+			n => this.setFilesFilter(n, false),
+			this,
+		);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -425,7 +447,14 @@ export class SearchAndCompareView extends ViewBase<SearchAndCompareViewNode, Sea
 			.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
 			.map(p =>
 				p.type === 'comparison'
-					? new CompareResultsNode(this, root, p.path, p.ref1, p.ref2, p.timestamp)
+					? new CompareResultsNode(
+							this,
+							root,
+							p.path,
+							{ label: p.ref1.label, ref: p.ref1.ref ?? (p.ref1 as any).name ?? (p.ref1 as any).sha },
+							{ label: p.ref2.label, ref: p.ref2.ref ?? (p.ref2 as any).name ?? (p.ref2 as any).sha },
+							p.timestamp,
+					  )
 					: new SearchResultsNode(this, root, p.path, p.search, p.labels, undefined, p.timestamp),
 			);
 	}
@@ -466,14 +495,8 @@ export class SearchAndCompareView extends ViewBase<SearchAndCompareViewNode, Sea
 		setImmediate(() => this.reveal(results, options));
 	}
 
-	private edit(node: SearchResultsNode) {
-		if (!(node instanceof SearchResultsNode)) return undefined;
-
-		return node.edit();
-	}
-
 	private setFilesLayout(layout: ViewFilesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'files', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.files.layout` as const, layout);
 	}
 
 	private setKeepResults(enabled: boolean) {
@@ -482,13 +505,19 @@ export class SearchAndCompareView extends ViewBase<SearchAndCompareViewNode, Sea
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
 	}
 
 	private pin(node: CompareResultsNode | SearchResultsNode) {
 		if (!(node instanceof CompareResultsNode) && !(node instanceof SearchResultsNode)) return undefined;
 
 		return node.pin();
+	}
+
+	private setFilesFilter(node: ResultsFilesNode, filter: 'left' | 'right' | false) {
+		if (!(node instanceof ResultsFilesNode)) return;
+
+		node.filter = filter;
 	}
 
 	private swapComparison(node: CompareResultsNode) {

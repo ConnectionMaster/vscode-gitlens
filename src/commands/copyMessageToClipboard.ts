@@ -1,5 +1,10 @@
 'use strict';
 import { env, TextEditor, Uri } from 'vscode';
+import { Container } from '../container';
+import { GitUri } from '../git/gitUri';
+import { Logger } from '../logger';
+import { Messages } from '../messages';
+import { Iterables } from '../system';
 import {
 	ActiveEditorCommand,
 	command,
@@ -10,11 +15,6 @@ import {
 	isCommandContextViewNodeHasCommit,
 	isCommandContextViewNodeHasTag,
 } from './common';
-import { Container } from '../container';
-import { GitUri } from '../git/gitUri';
-import { Logger } from '../logger';
-import { Messages } from '../messages';
-import { Iterables } from '../system';
 
 export interface CopyMessageToClipboardCommandArgs {
 	message?: string;
@@ -27,7 +27,7 @@ export class CopyMessageToClipboardCommand extends ActiveEditorCommand {
 		super(Commands.CopyMessageToClipboard);
 	}
 
-	protected preExecute(context: CommandContext, args?: CopyMessageToClipboardCommandArgs) {
+	protected override preExecute(context: CommandContext, args?: CopyMessageToClipboardCommandArgs) {
 		if (isCommandContextViewNodeHasCommit(context)) {
 			args = { ...args };
 			args.sha = context.node.commit.sha;

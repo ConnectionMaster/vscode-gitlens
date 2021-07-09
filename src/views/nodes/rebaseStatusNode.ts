@@ -10,13 +10,10 @@ import {
 	TreeItemCollapsibleState,
 	Uri,
 } from 'vscode';
-import { BranchNode } from './branchNode';
 import { Commands, DiffWithPreviousCommandArgs } from '../../commands';
-import { CommitFileNode } from './commitFileNode';
 import { ViewFilesLayout } from '../../configuration';
 import { BuiltInCommands, GlyphChars } from '../../constants';
 import { Container } from '../../container';
-import { FileNode, FolderNode } from './folderNode';
 import {
 	CommitFormatter,
 	GitBranch,
@@ -27,9 +24,12 @@ import {
 	GitStatus,
 } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { MergeConflictFileNode } from './mergeConflictFileNode';
 import { Arrays, Strings } from '../../system';
 import { ViewsWithCommits } from '../viewBase';
+import { BranchNode } from './branchNode';
+import { CommitFileNode } from './commitFileNode';
+import { FileNode, FolderNode } from './folderNode';
+import { MergeConflictFileNode } from './mergeConflictFileNode';
 import { ContextValues, ViewNode, ViewRefNode } from './viewNode';
 
 export class RebaseStatusNode extends ViewNode<ViewsWithCommits> {
@@ -50,7 +50,7 @@ export class RebaseStatusNode extends ViewNode<ViewsWithCommits> {
 		super(GitUri.fromRepoPath(rebaseStatus.repoPath), view, parent);
 	}
 
-	get id(): string {
+	override get id(): string {
 		return RebaseStatusNode.getId(this.rebaseStatus.repoPath, this.rebaseStatus.incoming.name, this.root);
 	}
 
@@ -138,7 +138,7 @@ export class RebaseCommitNode extends ViewRefNode<ViewsWithCommits, GitRevisionR
 		super(commit.toGitUri(), view, parent);
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		let message = this.commit.message;
 		const index = message.indexOf('\n');
 		if (index !== -1) {
@@ -200,8 +200,7 @@ export class RebaseCommitNode extends ViewRefNode<ViewsWithCommits, GitRevisionR
 
 		// item.contextValue = ContextValues.RebaseCommit;
 
-		// eslint-disable-next-line no-template-curly-in-string
-		item.description = CommitFormatter.fromTemplate('${message}', this.commit, {
+		item.description = CommitFormatter.fromTemplate(`\${message}`, this.commit, {
 			messageTruncateAtNewLine: true,
 		});
 		item.iconPath = new ThemeIcon('git-commit');
@@ -210,7 +209,7 @@ export class RebaseCommitNode extends ViewRefNode<ViewsWithCommits, GitRevisionR
 		return item;
 	}
 
-	getCommand(): Command | undefined {
+	override getCommand(): Command | undefined {
 		const commandArgs: DiffWithPreviousCommandArgs = {
 			commit: this.commit,
 			uri: this.uri,

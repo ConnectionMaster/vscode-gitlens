@@ -4,10 +4,10 @@ import { TreeItem, TreeItemCollapsibleState } from 'vscode';
 import { ViewFilesLayout } from '../../config';
 import { Container } from '../../container';
 import { CommitFormatter, GitStashCommit, GitStashReference } from '../../git/git';
+import { Arrays, Strings } from '../../system';
 import { ContextValues, FileNode, FolderNode, RepositoryNode, StashFileNode, ViewNode, ViewRefNode } from '../nodes';
 import { RepositoriesView } from '../repositoriesView';
 import { StashesView } from '../stashesView';
-import { Arrays, Strings } from '../../system';
 
 export class StashNode extends ViewRefNode<StashesView | RepositoriesView, GitStashReference> {
 	static key = ':stash';
@@ -19,11 +19,11 @@ export class StashNode extends ViewRefNode<StashesView | RepositoriesView, GitSt
 		super(commit.toGitUri(), view, parent);
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		return this.commit.stashName;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return StashNode.getId(this.commit.repoPath, this.commit.sha);
 	}
 
@@ -71,8 +71,7 @@ export class StashNode extends ViewRefNode<StashesView | RepositoriesView, GitSt
 			dateFormat: Container.config.defaultDateFormat,
 		});
 		item.contextValue = ContextValues.Stash;
-		// eslint-disable-next-line no-template-curly-in-string
-		item.tooltip = CommitFormatter.fromTemplate('${ago} (${date})\n\n${message}', this.commit, {
+		item.tooltip = CommitFormatter.fromTemplate(`\${ago} (\${date})\n\n\${message}`, this.commit, {
 			dateFormat: Container.config.defaultDateFormat,
 			// messageAutolinks: true,
 		});

@@ -12,12 +12,12 @@ import {
 	Uri,
 	window,
 } from 'vscode';
+import { UriComparer } from '../comparers';
 import { configuration, FileAnnotationType } from '../configuration';
 import { Container } from '../container';
-import { Hovers } from './hovers';
-import { LinesChangeEvent } from '../trackers/gitLineTracker';
 import { debug } from '../system';
-import { UriComparer } from '../comparers';
+import { LinesChangeEvent } from '../trackers/gitLineTracker';
+import { Hovers } from './hovers';
 
 export class LineHoverController implements Disposable {
 	private readonly _disposable: Disposable;
@@ -26,7 +26,7 @@ export class LineHoverController implements Disposable {
 
 	constructor() {
 		this._disposable = Disposable.from(configuration.onDidChange(this.onConfigurationChanged, this));
-		this.onConfigurationChanged(configuration.initializingChangeEvent);
+		this.onConfigurationChanged();
 	}
 
 	dispose() {
@@ -36,11 +36,8 @@ export class LineHoverController implements Disposable {
 		this._disposable.dispose();
 	}
 
-	private onConfigurationChanged(e: ConfigurationChangeEvent) {
-		if (
-			!configuration.changed(e, 'hovers', 'enabled') &&
-			!configuration.changed(e, 'hovers', 'currentLine', 'enabled')
-		) {
+	private onConfigurationChanged(e?: ConfigurationChangeEvent) {
+		if (!configuration.changed(e, 'hovers.enabled') && !configuration.changed(e, 'hovers.currentLine.enabled')) {
 			return;
 		}
 

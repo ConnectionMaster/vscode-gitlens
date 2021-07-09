@@ -7,16 +7,17 @@ import {
 	StatusBarAlignment,
 	StatusBarItem,
 	TextEditor,
+	Uri,
 	window,
 } from 'vscode';
-import { Commands } from '../commands';
-import { configuration, StatusBarCommand } from '../configuration';
+import { command, Commands, ToggleFileChangesAnnotationCommandArgs } from '../commands';
+import { configuration, FileAnnotationType, StatusBarCommand } from '../configuration';
 import { GlyphChars, isTextEditor } from '../constants';
 import { Container } from '../container';
 import { CommitFormatter, GitBlameCommit, PullRequest } from '../git/git';
-import { LinesChangeEvent } from '../trackers/gitLineTracker';
-import { debug, Promises } from '../system';
 import { LogCorrelationContext, Logger } from '../logger';
+import { debug, Promises } from '../system';
+import { LinesChangeEvent } from '../trackers/gitLineTracker';
 
 export class StatusBarController implements Disposable {
 	private _cancellation: CancellationTokenSource | undefined;
@@ -26,7 +27,7 @@ export class StatusBarController implements Disposable {
 
 	constructor() {
 		this._disposable = Disposable.from(configuration.onDidChange(this.onConfigurationChanged, this));
-		this.onConfigurationChanged(configuration.initializingChangeEvent);
+		this.onConfigurationChanged();
 	}
 
 	dispose() {
@@ -39,11 +40,11 @@ export class StatusBarController implements Disposable {
 		this._disposable.dispose();
 	}
 
-	private onConfigurationChanged(e: ConfigurationChangeEvent) {
+	private onConfigurationChanged(e?: ConfigurationChangeEvent) {
 		if (configuration.changed(e, 'mode')) {
 			const mode =
 				Container.config.mode.active && Container.config.mode.statusBar.enabled
-					? Container.config.modes[Container.config.mode.active]
+					? Container.config.modes?.[Container.config.mode.active]
 					: undefined;
 			if (mode?.statusBarItemName) {
 				const alignment =
@@ -51,7 +52,7 @@ export class StatusBarController implements Disposable {
 						? StatusBarAlignment.Right
 						: StatusBarAlignment.Left;
 
-				if (configuration.changed(e, 'mode', 'statusBar', 'alignment')) {
+				if (configuration.changed(e, 'mode.statusBar.alignment')) {
 					if (this._statusBarMode?.alignment !== alignment) {
 						this._statusBarMode?.dispose();
 						this._statusBarMode = undefined;
@@ -60,7 +61,12 @@ export class StatusBarController implements Disposable {
 
 				this._statusBarMode =
 					this._statusBarMode ??
-					window.createStatusBarItem(alignment, alignment === StatusBarAlignment.Right ? 999 : 1);
+					window.createStatusBarItem(
+						'gitlens.mode',
+						alignment,
+						alignment === StatusBarAlignment.Right ? 999 : 1,
+					);
+				this._statusBarMode.name = 'GitLens Modes';
 				this._statusBarMode.command = Commands.SwitchMode;
 				this._statusBarMode.text = mode.statusBarItemName;
 				this._statusBarMode.tooltip = 'Switch GitLens Mode';
@@ -77,7 +83,7 @@ export class StatusBarController implements Disposable {
 			const alignment =
 				Container.config.statusBar.alignment !== 'left' ? StatusBarAlignment.Right : StatusBarAlignment.Left;
 
-			if (configuration.changed(e, 'statusBar', 'alignment')) {
+			if (configuration.changed(e, 'statusBar.alignment')) {
 				if (this._statusBarBlame?.alignment !== alignment) {
 					this._statusBarBlame?.dispose();
 					this._statusBarBlame = undefined;
@@ -86,16 +92,21 @@ export class StatusBarController implements Disposable {
 
 			this._statusBarBlame =
 				this._statusBarBlame ??
-				window.createStatusBarItem(alignment, alignment === StatusBarAlignment.Right ? 1000 : 0);
+				window.createStatusBarItem(
+					'gitlens.blame',
+					alignment,
+					alignment === StatusBarAlignment.Right ? 1000 : 0,
+				);
+			this._statusBarBlame.name = 'GitLens Current Line Blame';
 			this._statusBarBlame.command = Container.config.statusBar.command;
 
-			if (configuration.changed(e, 'statusBar', 'enabled')) {
+			if (configuration.changed(e, 'statusBar.enabled')) {
 				Container.lineTracker.start(
 					this,
 					Container.lineTracker.onDidChangeActiveLines(this.onActiveLinesChanged, this),
 				);
 			}
-		} else if (configuration.changed(e, 'statusBar', 'enabled')) {
+		} else if (configuration.changed(e, 'statusBar.enabled')) {
 			Container.lineTracker.stop(this);
 
 			this._statusBarBlame?.dispose();
@@ -132,7 +143,7 @@ export class StatusBarController implements Disposable {
 		if (clear) {
 			this.clearBlame();
 		} else if (this._statusBarBlame != null) {
-			this._statusBarBlame.text = this._statusBarBlame.text.replace('$(git-commit)', '$(sync~spin)');
+			this._statusBarBlame.text = this._statusBarBlame.text.replace('$(git-commit)', '$(loading~spin)');
 		}
 	}
 
@@ -179,12 +190,16 @@ export class StatusBarController implements Disposable {
 			getBranchAndTagTips: getBranchAndTagTips,
 			messageTruncateAtNewLine: true,
 			pullRequestOrRemote: pr,
-			pullRequestPendingMessage: 'PR $(sync~spin)',
+			pullRequestPendingMessage: 'PR $(loading~spin)',
 		})}`;
 
 		switch (cfg.command) {
-			case StatusBarCommand.ToggleFileBlame:
-				this._statusBarBlame.tooltip = 'Toggle File Blame Annotations';
+			case StatusBarCommand.CopyRemoteCommitUrl:
+				this._statusBarBlame.tooltip = 'Copy Remote Commit Url';
+				break;
+			case StatusBarCommand.CopyRemoteFileUrl:
+				this._statusBarBlame.command = Commands.CopyRemoteFileUrl;
+				this._statusBarBlame.tooltip = 'Copy Remote File Revision Url';
 				break;
 			case StatusBarCommand.DiffWithPrevious:
 				this._statusBarBlame.command = Commands.DiffLineWithPrevious;
@@ -194,8 +209,11 @@ export class StatusBarController implements Disposable {
 				this._statusBarBlame.command = Commands.DiffLineWithWorking;
 				this._statusBarBlame.tooltip = 'Open Line Changes with Working File';
 				break;
-			case StatusBarCommand.ToggleCodeLens:
-				this._statusBarBlame.tooltip = 'Toggle Git CodeLens';
+			case StatusBarCommand.OpenCommitOnRemote:
+				this._statusBarBlame.tooltip = 'Open Commit on Remote';
+				break;
+			case StatusBarCommand.OpenFileOnRemote:
+				this._statusBarBlame.tooltip = 'Open Revision on Remote';
 				break;
 			case StatusBarCommand.RevealCommitInView:
 				this._statusBarBlame.tooltip = 'Reveal Commit in the Side Bar';
@@ -209,11 +227,50 @@ export class StatusBarController implements Disposable {
 			case StatusBarCommand.ShowQuickCommitFileDetails:
 				this._statusBarBlame.tooltip = 'Show Commit (file)';
 				break;
+			case StatusBarCommand.ShowQuickCurrentBranchHistory:
+				this._statusBarBlame.tooltip = 'Show Branch History';
+				break;
 			case StatusBarCommand.ShowQuickFileHistory:
 				this._statusBarBlame.tooltip = 'Show File History';
 				break;
-			case StatusBarCommand.ShowQuickCurrentBranchHistory:
-				this._statusBarBlame.tooltip = 'Show Branch History';
+			case StatusBarCommand.ToggleCodeLens:
+				this._statusBarBlame.tooltip = 'Toggle Git CodeLens';
+				break;
+			case StatusBarCommand.ToggleFileBlame:
+				this._statusBarBlame.tooltip = 'Toggle File Blame';
+				break;
+			case StatusBarCommand.ToggleFileChanges: {
+				this._statusBarBlame.command = command<[Uri, ToggleFileChangesAnnotationCommandArgs]>({
+					title: 'Toggle File Changes',
+					command: Commands.ToggleFileChanges,
+					arguments: [
+						commit.uri,
+						{
+							type: FileAnnotationType.Changes,
+							context: { sha: commit.sha, only: false, selection: false },
+						},
+					],
+				});
+				this._statusBarBlame.tooltip = 'Toggle File Changes';
+				break;
+			}
+			case StatusBarCommand.ToggleFileChangesOnly: {
+				this._statusBarBlame.command = command<[Uri, ToggleFileChangesAnnotationCommandArgs]>({
+					title: 'Toggle File Changes',
+					command: Commands.ToggleFileChanges,
+					arguments: [
+						commit.uri,
+						{
+							type: FileAnnotationType.Changes,
+							context: { sha: commit.sha, only: true, selection: false },
+						},
+					],
+				});
+				this._statusBarBlame.tooltip = 'Toggle File Changes';
+				break;
+			}
+			case StatusBarCommand.ToggleFileHeatmap:
+				this._statusBarBlame.tooltip = 'Toggle File Heatmap';
 				break;
 		}
 

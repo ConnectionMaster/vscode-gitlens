@@ -1,15 +1,15 @@
 'use strict';
 import { ThemeColor, ThemeIcon, TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { BranchesView } from '../branchesView';
-import { CommitsView } from '../commitsView';
 import { Colors } from '../../constants';
-import { ContributorsView } from '../contributorsView';
 import { GitBranch, GitCommit, PullRequest, PullRequestState } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
+import { BranchesView } from '../branchesView';
+import { CommitsView } from '../commitsView';
+import { ContributorsView } from '../contributorsView';
 import { RemotesView } from '../remotesView';
 import { RepositoriesView } from '../repositoriesView';
-import { RepositoryNode } from './repositoryNode';
 import { SearchAndCompareView } from '../searchAndCompareView';
+import { RepositoryNode } from './repositoryNode';
 import { ContextValues, ViewNode } from './viewNode';
 
 export class PullRequestNode extends ViewNode<
@@ -29,11 +29,11 @@ export class PullRequestNode extends ViewNode<
 		super(GitUri.fromRepoPath(branchOrCommit.repoPath), view, parent);
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		return this.pullRequest.url;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return PullRequestNode.getId(this.branchOrCommit.repoPath, this.pullRequest.id, this.branchOrCommit.ref);
 	}
 
@@ -43,6 +43,7 @@ export class PullRequestNode extends ViewNode<
 
 	getTreeItem(): TreeItem {
 		const item = new TreeItem(`#${this.pullRequest.id}: ${this.pullRequest.title}`, TreeItemCollapsibleState.None);
+		item.id = this.id;
 		item.contextValue = ContextValues.PullRequest;
 		item.description = `${this.pullRequest.state}, ${this.pullRequest.formatDateFromNow()}`;
 		item.iconPath = new ThemeIcon(
@@ -55,7 +56,6 @@ export class PullRequestNode extends ViewNode<
 					: Colors.OpenPullRequestIconColor,
 			),
 		);
-		item.id = this.id;
 		item.tooltip = `${this.pullRequest.title}\n#${this.pullRequest.id} by ${this.pullRequest.author.name} was ${
 			this.pullRequest.state === PullRequestState.Open ? 'opened' : this.pullRequest.state.toLowerCase()
 		} ${this.pullRequest.formatDateFromNow()}`;

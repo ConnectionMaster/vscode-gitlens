@@ -14,14 +14,10 @@ import {
 	GitTag,
 	Repository,
 } from '../git/git';
-import { CommandQuickPickItem, QuickPickItemOfT } from './quickPicksItems';
 import { Dates, Strings } from '../system';
+import { CommandQuickPickItem, QuickPickItemOfT } from './quickPicksItems';
 
 export class GitCommandQuickPickItem extends CommandQuickPickItem<[GitCommandsCommandArgs]> {
-	label!: string;
-	description?: string;
-	detail?: string | undefined;
-
 	constructor(label: string, args: GitCommandsCommandArgs);
 	constructor(item: QuickPickItem, args: GitCommandsCommandArgs);
 	constructor(labelOrItem: string | QuickPickItem, args: GitCommandsCommandArgs) {
@@ -67,37 +63,41 @@ export namespace BranchQuickPickItem {
 			description = 'current branch';
 		}
 
-		if (options.status && !branch.remote && branch.tracking !== undefined) {
+		if (options.status && !branch.remote && branch.upstream != null) {
 			let arrows = GlyphChars.Dash;
 
 			const remote = await branch.getRemote();
-			if (remote !== undefined) {
-				let left;
-				let right;
-				for (const { type } of remote.urls) {
-					if (type === GitRemoteType.Fetch) {
-						left = true;
+			if (!branch.upstream.missing) {
+				if (remote != null) {
+					let left;
+					let right;
+					for (const { type } of remote.urls) {
+						if (type === GitRemoteType.Fetch) {
+							left = true;
 
-						if (right) break;
-					} else if (type === GitRemoteType.Push) {
-						right = true;
+							if (right) break;
+						} else if (type === GitRemoteType.Push) {
+							right = true;
 
-						if (left) break;
+							if (left) break;
+						}
+					}
+
+					if (left && right) {
+						arrows = GlyphChars.ArrowsRightLeft;
+					} else if (right) {
+						arrows = GlyphChars.ArrowRight;
+					} else if (left) {
+						arrows = GlyphChars.ArrowLeft;
 					}
 				}
-
-				if (left && right) {
-					arrows = GlyphChars.ArrowsRightLeft;
-				} else if (right) {
-					arrows = GlyphChars.ArrowRight;
-				} else if (left) {
-					arrows = GlyphChars.ArrowLeft;
-				}
+			} else {
+				arrows = GlyphChars.Warning;
 			}
 
 			const status = `${branch.getTrackingStatus({ suffix: `${GlyphChars.Space} ` })}${arrows}${
 				GlyphChars.Space
-			} ${branch.tracking}`;
+			} ${branch.upstream.name}`;
 			description = `${description ? `${description}${GlyphChars.Space.repeat(2)}${status}` : status}`;
 		}
 

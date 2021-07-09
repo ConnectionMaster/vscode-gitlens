@@ -1,5 +1,10 @@
 'use strict';
 import { TextEditor, Uri, window } from 'vscode';
+import { Container } from '../container';
+import { GitBlameCommit, GitCommit, GitLog, GitLogCommit } from '../git/git';
+import { GitUri } from '../git/gitUri';
+import { Logger } from '../logger';
+import { Messages } from '../messages';
 import {
 	ActiveEditorCachedCommand,
 	command,
@@ -8,12 +13,7 @@ import {
 	getCommandUri,
 	isCommandContextViewNodeHasCommit,
 } from './common';
-import { Container } from '../container';
-import { GitBlameCommit, GitCommit, GitLog, GitLogCommit } from '../git/git';
 import { executeGitCommand } from './gitCommands';
-import { GitUri } from '../git/gitUri';
-import { Logger } from '../logger';
-import { Messages } from '../messages';
 
 export interface ShowQuickCommitFileCommandArgs {
 	sha?: string;
@@ -37,7 +37,7 @@ export class ShowQuickCommitFileCommand extends ActiveEditorCachedCommand {
 		]);
 	}
 
-	protected async preExecute(context: CommandContext, args?: ShowQuickCommitFileCommandArgs) {
+	protected override async preExecute(context: CommandContext, args?: ShowQuickCommitFileCommandArgs) {
 		if (context.editor != null && context.command.startsWith(Commands.ShowQuickCommitRevision)) {
 			args = { ...args };
 

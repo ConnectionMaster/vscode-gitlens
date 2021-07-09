@@ -7,7 +7,13 @@ import { ActionRunners } from './api/actionRunners';
 import { resetAvatarCache } from './avatars';
 import { GitCodeLensController } from './codelens/codeLensController';
 import { Commands, ToggleFileAnnotationCommandArgs } from './commands';
-import { AnnotationsToggleMode, Config, configuration, ConfigurationWillChangeEvent } from './configuration';
+import {
+	AnnotationsToggleMode,
+	Config,
+	configuration,
+	ConfigurationWillChangeEvent,
+	FileAnnotationType,
+} from './configuration';
 import { GitFileSystemProvider } from './git/fsProvider';
 import { GitService } from './git/gitService';
 import { LineHoverController } from './hovers/lineHoverController';
@@ -29,6 +35,7 @@ import { SearchAndCompareView } from './views/searchAndCompareView';
 import { StashesView } from './views/stashesView';
 import { TagsView } from './views/tagsView';
 import { ViewCommands } from './views/viewCommands';
+import { ViewFileDecorationProvider } from './views/viewDecorationProvider';
 import { VslsController } from './vsls/vsls';
 import { RebaseEditorProvider } from './webviews/rebaseEditor';
 import { SettingsWebview } from './webviews/settingsWebview';
@@ -54,6 +61,8 @@ export class Container {
 
 		context.subscriptions.push((this._git = new GitService()));
 
+		context.subscriptions.push(new ViewFileDecorationProvider());
+
 		// Since there is a bit of a chicken & egg problem with the DocumentTracker and the GitService, initialize the tracker once the GitService is loaded
 		this._tracker.initialize();
 
@@ -66,36 +75,16 @@ export class Container {
 		context.subscriptions.push((this._settingsWebview = new SettingsWebview()));
 		context.subscriptions.push((this._welcomeWebview = new WelcomeWebview()));
 
+		context.subscriptions.push((this._repositoriesView = new RepositoriesView()));
 		context.subscriptions.push((this._commitsView = new CommitsView()));
 		context.subscriptions.push((this._fileHistoryView = new FileHistoryView()));
+		context.subscriptions.push((this._lineHistoryView = new LineHistoryView()));
 		context.subscriptions.push((this._branchesView = new BranchesView()));
 		context.subscriptions.push((this._remotesView = new RemotesView()));
 		context.subscriptions.push((this._stashesView = new StashesView()));
 		context.subscriptions.push((this._tagsView = new TagsView()));
 		context.subscriptions.push((this._contributorsView = new ContributorsView()));
 		context.subscriptions.push((this._searchAndCompareView = new SearchAndCompareView()));
-
-		if (config.views.lineHistory.enabled) {
-			context.subscriptions.push((this._lineHistoryView = new LineHistoryView()));
-		} else {
-			const disposable = configuration.onDidChange(e => {
-				if (configuration.changed(e, 'views', 'lineHistory', 'enabled')) {
-					disposable.dispose();
-					context.subscriptions.push((this._lineHistoryView = new LineHistoryView()));
-				}
-			});
-		}
-
-		if (config.views.repositories.enabled) {
-			context.subscriptions.push((this._repositoriesView = new RepositoriesView()));
-		} else {
-			const disposable = configuration.onDidChange(e => {
-				if (configuration.changed(e, 'views', 'repositories', 'enabled')) {
-					disposable.dispose();
-					context.subscriptions.push((this._repositoriesView = new RepositoriesView()));
-				}
-			});
-		}
 
 		context.subscriptions.push((this._rebaseEditor = new RebaseEditorProvider()));
 
@@ -105,7 +94,7 @@ export class Container {
 
 		context.subscriptions.push(
 			configuration.onDidChange(e => {
-				if (!configuration.changed(e, 'terminalLinks', 'enabled')) return;
+				if (!configuration.changed(e, 'terminalLinks.enabled')) return;
 
 				this._terminalLinks?.dispose();
 				if (Container.config.terminalLinks.enabled) {
@@ -367,7 +356,7 @@ export class Container {
 	private static applyMode(config: Config) {
 		if (!config.mode.active) return config;
 
-		const mode = config.modes[config.mode.active];
+		const mode = config.modes?.[config.mode.active];
 		if (mode == null) return config;
 
 		if (mode.annotations != null) {
@@ -389,6 +378,7 @@ export class Container {
 
 			if (command != null) {
 				const commandArgs: ToggleFileAnnotationCommandArgs = {
+					type: mode.annotations as FileAnnotationType,
 					on: true,
 				};
 				// Make sure to delay the execution by a bit so that the configuration changes get propegated first
@@ -420,11 +410,11 @@ export class Container {
 			this._configsAffectedByMode = [
 				`gitlens.${configuration.name('mode')}`,
 				`gitlens.${configuration.name('modes')}`,
-				`gitlens.${configuration.name('blame', 'toggleMode')}`,
-				`gitlens.${configuration.name('changes', 'toggleMode')}`,
+				`gitlens.${configuration.name('blame.toggleMode')}`,
+				`gitlens.${configuration.name('changes.toggleMode')}`,
 				`gitlens.${configuration.name('codeLens')}`,
 				`gitlens.${configuration.name('currentLine')}`,
-				`gitlens.${configuration.name('heatmap', 'toggleMode')}`,
+				`gitlens.${configuration.name('heatmap.toggleMode')}`,
 				`gitlens.${configuration.name('hovers')}`,
 				`gitlens.${configuration.name('statusBar')}`,
 			];

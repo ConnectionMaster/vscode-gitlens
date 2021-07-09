@@ -5,11 +5,11 @@ import { Container } from '../../container';
 import { GitRevision } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
 import { debug, gate, log, Strings } from '../../system';
+import { SearchAndCompareView } from '../searchAndCompareView';
+import { RepositoryNode } from './repositoryNode';
 import { CommitsQueryResults, ResultsCommitsNode } from './resultsCommitsNode';
 import { FilesQueryResults, ResultsFilesNode } from './resultsFilesNode';
 import { ContextValues, ViewNode } from './viewNode';
-import { RepositoryNode } from './repositoryNode';
-import { SearchAndCompareView } from '../searchAndCompareView';
 
 let instanceId = 0;
 
@@ -52,7 +52,7 @@ export class CompareResultsNode extends ViewNode<SearchAndCompareView> {
 		};
 	}
 
-	get id(): string {
+	override get id(): string {
 		return CompareResultsNode.getId(this.repoPath, this._ref.ref, this._compareWith.ref, this._instanceId);
 	}
 
@@ -151,12 +151,13 @@ export class CompareResultsNode extends ViewNode<SearchAndCompareView> {
 		const item = new TreeItem(
 			`Comparing ${
 				this._ref.label ?? GitRevision.shorten(this._ref.ref, { strings: { working: 'Working Tree' } })
-			} to ${
+			} with ${
 				this._compareWith.label ??
 				GitRevision.shorten(this._compareWith.ref, { strings: { working: 'Working Tree' } })
 			}`,
 			TreeItemCollapsibleState.Collapsed,
 		);
+		item.id = this.id;
 		item.contextValue = `${ContextValues.CompareResults}${this._pinned ? '+pinned' : ''}`;
 		item.description = description;
 		if (this._pinned) {
@@ -184,7 +185,7 @@ export class CompareResultsNode extends ViewNode<SearchAndCompareView> {
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		if (!reset) return;
 
 		this._children = undefined;
@@ -330,8 +331,8 @@ export class CompareResultsNode extends ViewNode<SearchAndCompareView> {
 			type: 'comparison',
 			timestamp: this._pinned,
 			path: this.repoPath,
-			ref1: this._ref,
-			ref2: this._compareWith,
+			ref1: { label: this._ref.label, ref: this._ref.ref },
+			ref2: { label: this._compareWith.label, ref: this._compareWith.ref },
 		});
 	}
 }

@@ -2,8 +2,10 @@
 import { GlyphChars } from '../../constants';
 import { Container } from '../../container';
 import { GitLog, GitLogCommit, Repository, SearchOperators, searchOperators, SearchPattern } from '../../git/git';
-import { GitCommandsCommand } from '../gitCommands';
+import { ActionQuickPickItem, QuickPickItemOfT } from '../../quickpicks';
+import { Strings } from '../../system';
 import { SearchResultsNode } from '../../views/nodes';
+import { GitCommandsCommand } from '../gitCommands';
 import {
 	appendReposToTitle,
 	PartialStepState,
@@ -17,8 +19,6 @@ import {
 	StepSelection,
 	StepState,
 } from '../quickCommand';
-import { ActionQuickPickItem, QuickPickItemOfT } from '../../quickpicks';
-import { Strings } from '../../system';
 
 interface Context {
 	repos: Repository[];
@@ -77,15 +77,15 @@ export class SearchGitCommand extends QuickCommand<State> {
 		};
 	}
 
-	get canConfirm(): boolean {
+	override get canConfirm(): boolean {
 		return false;
 	}
 
-	isMatch(key: string) {
+	override isMatch(key: string) {
 		return super.isMatch(key) || key === 'grep';
 	}
 
-	isFuzzyMatch(name: string) {
+	override isFuzzyMatch(name: string) {
 		return super.isFuzzyMatch(name) || name === 'grep';
 	}
 
@@ -340,7 +340,7 @@ export class SearchGitCommand extends QuickCommand<State> {
 				if (quickpick.value.length === 0) {
 					quickpick.items = items;
 				} else {
-					// If something was typed/selected, keep the quick pick open on focus lossrop
+					// If something was typed/selected, keep the quick pick open on focus loss
 					quickpick.ignoreFocusOut = true;
 					step.ignoreFocusOut = true;
 

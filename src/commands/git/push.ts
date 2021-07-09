@@ -1,8 +1,10 @@
 'use strict';
 import { configuration } from '../../configuration';
-import { GlyphChars } from '../../constants';
+import { BuiltInGitConfiguration, GlyphChars } from '../../constants';
 import { Container } from '../../container';
 import { GitBranch, GitBranchReference, GitReference, Repository } from '../../git/git';
+import { Directive, DirectiveQuickPickItem, FlagsQuickPickItem } from '../../quickpicks';
+import { Arrays, Dates, Strings } from '../../system';
 import {
 	appendReposToTitle,
 	AsyncStepResultGenerator,
@@ -17,8 +19,6 @@ import {
 	StepSelection,
 	StepState,
 } from '../quickCommand';
-import { Directive, DirectiveQuickPickItem, FlagsQuickPickItem } from '../../quickpicks';
-import { Arrays, Dates, Strings } from '../../system';
 
 interface Context {
 	repos: Repository[];
@@ -152,7 +152,7 @@ export class PushGitCommand extends QuickCommand<State> {
 	}
 
 	private async *confirmStep(state: PushStepState, context: Context): AsyncStepResultGenerator<Flags[]> {
-		const useForceWithLease = configuration.getAny<boolean>('git.useForcePushWithLease') ?? false;
+		const useForceWithLease = configuration.getAny<boolean>(BuiltInGitConfiguration.UseForcePushWithLease) ?? false;
 
 		let step: QuickPickStep<FlagsQuickPickItem<Flags>>;
 
@@ -188,7 +188,7 @@ export class PushGitCommand extends QuickCommand<State> {
 				} else {
 					const branch = await repo.getBranch(state.reference.name);
 
-					if (branch != null && branch?.tracking == null) {
+					if (branch != null && branch?.upstream == null) {
 						for (const remote of await repo.getRemotes()) {
 							items.push(
 								FlagsQuickPickItem.create<Flags>(

@@ -1,6 +1,8 @@
 'use strict';
 import { Uri } from 'vscode';
 import { GitActions } from '../commands';
+import { Container } from '../container';
+import { GitUri } from '../git/gitUri';
 import {
 	Command,
 	command,
@@ -10,8 +12,6 @@ import {
 	isCommandContextViewNodeHasRepoPath,
 	isCommandContextViewNodeHasRepository,
 } from './common';
-import { Container } from '../container';
-import { GitUri } from '../git/gitUri';
 
 const enum ResourceGroupType {
 	Merge,
@@ -32,7 +32,7 @@ export class StashSaveCommand extends Command {
 		super([Commands.StashSave, Commands.StashSaveFiles]);
 	}
 
-	protected async preExecute(context: CommandContext, args?: StashSaveCommandArgs) {
+	protected override async preExecute(context: CommandContext, args?: StashSaveCommandArgs) {
 		if (isCommandContextViewNodeHasFile(context)) {
 			args = { ...args };
 			args.repoPath = context.node.file.repoPath ?? context.node.repoPath;

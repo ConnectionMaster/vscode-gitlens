@@ -4,10 +4,10 @@ import { executeGitCommand } from '../../commands';
 import { Container } from '../../container';
 import { GitLog, SearchPattern } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
+import { debug, gate, log, Strings } from '../../system';
+import { SearchAndCompareView } from '../searchAndCompareView';
 import { RepositoryNode } from './repositoryNode';
 import { CommitsQueryResults, ResultsCommitsNode } from './resultsCommitsNode';
-import { SearchAndCompareView } from '../searchAndCompareView';
-import { debug, gate, log, Strings } from '../../system';
 import { ContextValues, PageableViewNode, ViewNode } from './viewNode';
 
 let instanceId = 0;
@@ -31,7 +31,7 @@ export class SearchResultsNode extends ViewNode<SearchAndCompareView> implements
 		return Strings.sha1(`${repoPath}|${SearchPattern.toKey(search)}`);
 	}
 
-	static is(node: any): node is SearchResultsNode {
+	static override is(node: any): node is SearchResultsNode {
 		return node instanceof SearchResultsNode;
 	}
 
@@ -65,7 +65,7 @@ export class SearchResultsNode extends ViewNode<SearchAndCompareView> implements
 		this._order = Date.now();
 	}
 
-	get id(): string {
+	override get id(): string {
 		return SearchResultsNode.getId(this.repoPath, this.search, this._instanceId);
 	}
 
@@ -130,6 +130,7 @@ export class SearchResultsNode extends ViewNode<SearchAndCompareView> implements
 
 	async getTreeItem(): Promise<TreeItem> {
 		const item = await this.ensureResults().getTreeItem();
+		item.id = this.id;
 		item.contextValue = `${ContextValues.SearchResults}${this._pinned ? '+pinned' : ''}`;
 		if ((await Container.git.getRepositoryCount()) > 1) {
 			const repo = await Container.git.getRepository(this.repoPath);
@@ -198,7 +199,7 @@ export class SearchResultsNode extends ViewNode<SearchAndCompareView> implements
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		this._resultsNode?.refresh(reset);
 	}
 

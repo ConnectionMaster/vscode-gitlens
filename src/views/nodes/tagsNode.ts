@@ -1,15 +1,15 @@
 'use strict';
 import { ThemeIcon, TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { BranchOrTagFolderNode } from './branchOrTagFolderNode';
-import { MessageNode } from './common';
 import { ViewBranchesLayout } from '../../configuration';
 import { Repository } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { RepositoriesView } from '../repositoriesView';
-import { RepositoryNode } from './repositoryNode';
 import { Arrays, debug, gate } from '../../system';
-import { TagNode } from './tagNode';
+import { RepositoriesView } from '../repositoriesView';
 import { TagsView } from '../tagsView';
+import { BranchOrTagFolderNode } from './branchOrTagFolderNode';
+import { MessageNode } from './common';
+import { RepositoryNode } from './repositoryNode';
+import { TagNode } from './tagNode';
 import { ContextValues, ViewNode } from './viewNode';
 
 export class TagsNode extends ViewNode<TagsView | RepositoriesView> {
@@ -24,7 +24,7 @@ export class TagsNode extends ViewNode<TagsView | RepositoriesView> {
 		super(uri, view, parent);
 	}
 
-	get id(): string {
+	override get id(): string {
 		return TagsNode.getId(this.repo.path);
 	}
 
@@ -75,7 +75,7 @@ export class TagsNode extends ViewNode<TagsView | RepositoriesView> {
 
 	@gate()
 	@debug()
-	refresh() {
+	override refresh() {
 		this._children = undefined;
 	}
 }

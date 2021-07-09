@@ -22,7 +22,7 @@ export class FileHistoryView extends ViewBase<FileHistoryTrackerNode | LineHisto
 		void setContext(ContextKeys.ViewsFileHistoryEditorFollowing, this._followEditor);
 	}
 
-	protected get showCollapseAll(): boolean {
+	protected override get showCollapseAll(): boolean {
 		return false;
 	}
 
@@ -84,7 +84,7 @@ export class FileHistoryView extends ViewBase<FileHistoryTrackerNode | LineHisto
 		commands.registerCommand(this.getQualifiedCommand('setShowAvatarsOff'), () => this.setShowAvatars(false), this);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -94,8 +94,8 @@ export class FileHistoryView extends ViewBase<FileHistoryTrackerNode | LineHisto
 			!configuration.changed(e, 'defaultDateStyle') &&
 			!configuration.changed(e, 'defaultGravatarsStyle') &&
 			!configuration.changed(e, 'defaultTimeFormat') &&
-			!configuration.changed(e, 'advanced', 'fileHistoryFollowsRenames') &&
-			!configuration.changed(e, 'advanced', 'fileHistoryShowAllBranches')
+			!configuration.changed(e, 'advanced.fileHistoryFollowsRenames') &&
+			!configuration.changed(e, 'advanced.fileHistoryShowAllBranches')
 		) {
 			return false;
 		}
@@ -122,12 +122,17 @@ export class FileHistoryView extends ViewBase<FileHistoryTrackerNode | LineHisto
 	}
 
 	private setCursorFollowing(enabled: boolean) {
+		const uri = !this._followEditor && this.root?.hasUri ? this.root.uri : undefined;
+
 		this._followCursor = enabled;
 		void setContext(ContextKeys.ViewsFileHistoryCursorFollowing, enabled);
 
 		this.title = this._followCursor ? 'Line History' : 'File History';
 
 		const root = this.ensureRoot(true);
+		if (uri != null) {
+			root.setUri(uri);
+		}
 		root.setEditorFollowing(this._followEditor);
 		void root.ensureSubscription();
 		void this.refresh(true);
@@ -157,14 +162,14 @@ export class FileHistoryView extends ViewBase<FileHistoryTrackerNode | LineHisto
 	}
 
 	private setRenameFollowing(enabled: boolean) {
-		return configuration.updateEffective('advanced', 'fileHistoryFollowsRenames', enabled);
+		return configuration.updateEffective('advanced.fileHistoryFollowsRenames', enabled);
 	}
 
 	private setShowAllBranches(enabled: boolean) {
-		return configuration.updateEffective('advanced', 'fileHistoryShowAllBranches', enabled);
+		return configuration.updateEffective('advanced.fileHistoryShowAllBranches', enabled);
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
 	}
 }

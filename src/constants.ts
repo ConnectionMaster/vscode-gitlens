@@ -27,6 +27,21 @@ export enum BuiltInCommands {
 	ShowReferences = 'editor.action.showReferences',
 }
 
+export enum BuiltInGitCommands {
+	Publish = 'git.publish',
+	Pull = 'git.pull',
+	PullRebase = 'git.pullRebase',
+	Push = 'git.push',
+	PushForce = 'git.pushForce',
+	UndoCommit = 'git.undoCommit',
+}
+
+export enum BuiltInGitConfiguration {
+	AutoRepositoryDetection = 'git.autoRepositoryDetection',
+	FetchOnPull = 'git.fetchOnPull',
+	UseForcePushWithLease = 'git.useForcePushWithLease',
+}
+
 export enum ContextKeys {
 	ActionPrefix = 'gitlens:action:',
 	ActiveFileStatus = 'gitlens:activeFileStatus',
@@ -104,11 +119,12 @@ export function hasVisibleTextEditor(): boolean {
 	return window.visibleTextEditors.some(e => isTextEditor(e));
 }
 
-export enum GlyphChars {
+export const enum GlyphChars {
 	AngleBracketLeftHeavy = '\u2770',
 	AngleBracketRightHeavy = '\u2771',
 	ArrowBack = '\u21a9',
 	ArrowDown = '\u2193',
+	ArrowDownUp = '\u21F5',
 	ArrowDropRight = '\u2937',
 	ArrowHeadRight = '\u27A4',
 	ArrowLeft = '\u2190',
@@ -121,13 +137,14 @@ export enum GlyphChars {
 	ArrowRightDouble = '\u21d2',
 	ArrowRightHollow = '\u21e8',
 	ArrowUp = '\u2191',
+	ArrowUpDown = '\u21C5',
 	ArrowUpRight = '\u2197',
 	ArrowsHalfLeftRight = '\u21cb',
 	ArrowsHalfRightLeft = '\u21cc',
 	ArrowsLeftRight = '\u21c6',
 	ArrowsRightLeft = '\u21c4',
 	Asterisk = '\u2217',
-	Check = '\u2713',
+	Check = '✔',
 	Dash = '\u2014',
 	Dot = '\u2022',
 	Ellipsis = '\u2026',
@@ -150,10 +167,11 @@ export enum GlyphChars {
 }
 
 export enum SyncedState {
-	DisallowConnectionPrefix = 'gitlens:disallow:connection:',
 	UpdatesViewVisible = 'gitlens:views:updates:visible',
 	Version = 'gitlens:synced:version',
 	WelcomeViewVisible = 'gitlens:views:welcome:visible',
+
+	Deprecated_DisallowConnectionPrefix = 'gitlens:disallow:connection:',
 }
 
 export enum GlobalState {
@@ -235,7 +253,6 @@ export enum WorkspaceState {
 	BranchComparisons = 'gitlens:branch:comparisons',
 	ConnectedPrefix = 'gitlens:connected:',
 	DefaultRemote = 'gitlens:remote:default',
-	DisallowConnectionPrefix = 'gitlens:disallow:connection:',
 	GitCommandPaletteUsage = 'gitlens:gitComandPalette:usage',
 	StarredBranches = 'gitlens:starred:branches',
 	StarredRepositories = 'gitlens:starred:repositories',
@@ -243,5 +260,6 @@ export enum WorkspaceState {
 	ViewsSearchAndCompareKeepResults = 'gitlens:views:searchAndCompare:keepResults',
 	ViewsSearchAndComparePinnedItems = 'gitlens:views:searchAndCompare:pinned',
 
+	Deprecated_DisallowConnectionPrefix = 'gitlens:disallow:connection:',
 	Deprecated_PinnedComparisons = 'gitlens:pinned:comparisons',
 }

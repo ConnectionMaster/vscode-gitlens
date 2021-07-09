@@ -2,6 +2,8 @@
 import { QuickInputButtons, QuickPickItem } from 'vscode';
 import { Container } from '../../container';
 import { GitReference, GitTagReference, Repository } from '../../git/git';
+import { FlagsQuickPickItem, QuickPickItemOfT } from '../../quickpicks';
+import { Strings } from '../../system';
 import {
 	appendReposToTitle,
 	AsyncStepResultGenerator,
@@ -18,8 +20,6 @@ import {
 	StepSelection,
 	StepState,
 } from '../quickCommand';
-import { FlagsQuickPickItem, QuickPickItemOfT } from '../../quickpicks';
-import { Strings } from '../../system';
 
 interface Context {
 	repos: Repository[];
@@ -113,15 +113,15 @@ export class TagGitCommand extends QuickCommand<State> {
 		};
 	}
 
-	get canConfirm(): boolean {
+	override get canConfirm(): boolean {
 		return this.subcommand != null;
 	}
 
-	get canSkipConfirm(): boolean {
+	override get canSkipConfirm(): boolean {
 		return this.subcommand === 'delete' ? false : super.canSkipConfirm;
 	}
 
-	get skipConfirmKey() {
+	override get skipConfirmKey() {
 		return `${this.key}${this.subcommand == null ? '' : `-${this.subcommand}`}:${this.pickedVia}`;
 	}
 
@@ -249,6 +249,10 @@ export class TagGitCommand extends QuickCommand<State> {
 				if (result === StepResult.Break) continue;
 
 				state.message = result;
+			}
+
+			if (state.message.length !== 0 && !state.flags.includes('-m')) {
+				state.flags.push('-m');
 			}
 
 			if (this.confirm(state.confirm)) {

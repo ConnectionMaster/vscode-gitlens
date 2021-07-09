@@ -11,7 +11,6 @@ import {
 	TextEditorDecorationType,
 	window,
 } from 'vscode';
-import { Annotations } from './annotations';
 import { configuration } from '../configuration';
 import { GlyphChars, isTextEditor } from '../constants';
 import { Container } from '../container';
@@ -19,6 +18,7 @@ import { Authentication, CommitFormatter, GitBlameCommit, PullRequest } from '..
 import { LogCorrelationContext, Logger } from '../logger';
 import { debug, Iterables, log, Promises } from '../system';
 import { LinesChangeEvent, LineSelection } from '../trackers/gitLineTracker';
+import { Annotations } from './annotations';
 
 const annotationDecoration: TextEditorDecorationType = window.createTextEditorDecorationType({
 	after: {
@@ -40,7 +40,7 @@ export class LineAnnotationController implements Disposable {
 			Container.fileAnnotations.onDidToggleAnnotations(this.onFileAnnotationsToggled, this),
 			Authentication.onDidChange(() => void this.refresh(window.activeTextEditor)),
 		);
-		this.onConfigurationChanged(configuration.initializingChangeEvent);
+		this.onConfigurationChanged();
 	}
 
 	dispose() {
@@ -50,10 +50,10 @@ export class LineAnnotationController implements Disposable {
 		this._disposable.dispose();
 	}
 
-	private onConfigurationChanged(e: ConfigurationChangeEvent) {
+	private onConfigurationChanged(e?: ConfigurationChangeEvent) {
 		if (!configuration.changed(e, 'currentLine')) return;
 
-		if (configuration.changed(e, 'currentLine', 'enabled')) {
+		if (configuration.changed(e, 'currentLine.enabled')) {
 			if (Container.config.currentLine.enabled) {
 				this._enabled = true;
 				this.resume();

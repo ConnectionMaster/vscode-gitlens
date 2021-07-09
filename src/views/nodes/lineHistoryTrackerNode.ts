@@ -1,31 +1,31 @@
 'use strict';
 import { Selection, TreeItem, TreeItemCollapsibleState, window } from 'vscode';
 import { UriComparer } from '../../comparers';
+import { ContextKeys, setContext } from '../../constants';
 import { Container } from '../../container';
-import { FileHistoryView } from '../fileHistoryView';
 import { GitReference, GitRevision } from '../../git/git';
 import { GitCommitish, GitUri } from '../../git/gitUri';
-import { LineHistoryView } from '../lineHistoryView';
-import { LineHistoryNode } from './lineHistoryNode';
 import { Logger } from '../../logger';
 import { ReferencePicker } from '../../quickpicks';
 import { debug, Functions, gate, log } from '../../system';
 import { LinesChangeEvent } from '../../trackers/gitLineTracker';
+import { FileHistoryView } from '../fileHistoryView';
+import { LineHistoryView } from '../lineHistoryView';
+import { LineHistoryNode } from './lineHistoryNode';
 import { ContextValues, SubscribeableViewNode, unknownGitUri, ViewNode } from './viewNode';
-import { ContextKeys, setContext } from '../../constants';
 
 export class LineHistoryTrackerNode extends SubscribeableViewNode<FileHistoryView | LineHistoryView> {
 	private _base: string | undefined;
 	private _child: LineHistoryNode | undefined;
 	private _editorContents: string | undefined;
 	private _selection: Selection | undefined;
-	protected splatted = true;
+	protected override splatted = true;
 
 	constructor(view: FileHistoryView | LineHistoryView) {
 		super(unknownGitUri, view);
 	}
 
-	dispose() {
+	override dispose() {
 		super.dispose();
 
 		this.resetChild();
@@ -48,6 +48,22 @@ export class LineHistoryTrackerNode extends SubscribeableViewNode<FileHistoryVie
 				return [];
 			}
 
+			if (this._selection == null) {
+				this.view.description = undefined;
+
+				this.view.message = 'There was no selection provided for line history.';
+				this.view.description = `${this.uri.fileName}${
+					this.uri.sha
+						? ` ${
+								this.uri.sha === GitRevision.deletedOrMissing
+									? this.uri.shortSha
+									: `(${this.uri.shortSha})`
+						  }`
+						: ''
+				}${!this.followingEditor ? ' (pinned)' : ''}`;
+				return [];
+			}
+
 			this.view.message = undefined;
 
 			const commitish: GitCommitish = {
@@ -65,7 +81,7 @@ export class LineHistoryTrackerNode extends SubscribeableViewNode<FileHistoryVie
 					filter: b => b.name === commitish.sha,
 				});
 			}
-			this._child = new LineHistoryNode(fileUri, this.view, this, branch, this._selection!, this._editorContents);
+			this._child = new LineHistoryNode(fileUri, this.view, this, branch, this._selection, this._editorContents);
 		}
 
 		return this._child.getChildren();
@@ -122,8 +138,10 @@ export class LineHistoryTrackerNode extends SubscribeableViewNode<FileHistoryVie
 	@debug({
 		exit: r => `returned ${r}`,
 	})
-	async refresh(reset: boolean = false) {
+	override async refresh(reset: boolean = false) {
 		const cc = Logger.getCorrelationContext();
+
+		if (!this.canSubscribe) return false;
 
 		if (reset) {
 			this.setUri();
@@ -219,7 +237,7 @@ export class LineHistoryTrackerNode extends SubscribeableViewNode<FileHistoryVie
 		void this.triggerChange();
 	}
 
-	private setUri(uri?: GitUri) {
+	setUri(uri?: GitUri) {
 		this._uri = uri ?? unknownGitUri;
 		void setContext(ContextKeys.ViewsFileHistoryCanPin, this.hasUri);
 	}

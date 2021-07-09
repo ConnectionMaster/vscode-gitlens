@@ -27,6 +27,7 @@ import {
 	RepositoryChangeEvent,
 } from '../git/git';
 import { GitUri } from '../git/gitUri';
+import { debug, gate, Strings } from '../system';
 import {
 	BranchesNode,
 	BranchNode,
@@ -36,7 +37,6 @@ import {
 	unknownGitUri,
 	ViewNode,
 } from './nodes';
-import { debug, gate, Strings } from '../system';
 import { ViewBase } from './viewBase';
 
 export class BranchesRepositoryNode extends RepositoryFolderNode<BranchesView, BranchesNode> {
@@ -54,6 +54,7 @@ export class BranchesRepositoryNode extends RepositoryFolderNode<BranchesView, B
 			RepositoryChange.Heads,
 			RepositoryChange.Index,
 			RepositoryChange.Remotes,
+			RepositoryChange.RemoteProviders,
 			RepositoryChange.Status,
 			RepositoryChange.Unknown,
 			RepositoryChangeComparisonMode.Any,
@@ -62,7 +63,7 @@ export class BranchesRepositoryNode extends RepositoryFolderNode<BranchesView, B
 }
 
 export class BranchesViewNode extends ViewNode<BranchesView> {
-	protected splatted = true;
+	protected override splatted = true;
 	private children: BranchesRepositoryNode[] | undefined;
 
 	constructor(view: BranchesView) {
@@ -117,7 +118,7 @@ export class BranchesViewNode extends ViewNode<BranchesView> {
 		return item;
 	}
 
-	async getSplattedChild() {
+	override async getSplattedChild() {
 		if (this.children == null) {
 			await this.getChildren();
 		}
@@ -127,7 +128,7 @@ export class BranchesViewNode extends ViewNode<BranchesView> {
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		if (reset && this.children != null) {
 			for (const child of this.children) {
 				child.dispose();
@@ -213,7 +214,7 @@ export class BranchesView extends ViewBase<BranchesViewNode, BranchesViewConfig>
 		);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -333,28 +334,26 @@ export class BranchesView extends ViewBase<BranchesViewNode, BranchesViewConfig>
 	}
 
 	private setLayout(layout: ViewBranchesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'branches', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.branches.layout` as const, layout);
 	}
 
 	private setFilesLayout(layout: ViewFilesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'files', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.files.layout` as const, layout);
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
 	}
 
 	private setShowBranchComparison(enabled: boolean) {
 		return configuration.updateEffective(
-			'views',
-			this.configKey,
-			'showBranchComparison',
+			`views.${this.configKey}.showBranchComparison` as const,
 			enabled ? ViewShowBranchComparison.Branch : false,
 		);
 	}
 
 	private async setShowBranchPullRequest(enabled: boolean) {
-		await configuration.updateEffective('views', this.configKey, 'pullRequests', 'showForBranches', enabled);
-		await configuration.updateEffective('views', this.configKey, 'pullRequests', 'enabled', enabled);
+		await configuration.updateEffective(`views.${this.configKey}.pullRequests.showForBranches` as const, enabled);
+		await configuration.updateEffective(`views.${this.configKey}.pullRequests.enabled` as const, enabled);
 	}
 }

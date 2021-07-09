@@ -16,7 +16,8 @@ import { DateStyle, FileAnnotationType } from '../../configuration';
 import { GlyphChars } from '../../constants';
 import { Container } from '../../container';
 import { emojify } from '../../emojis';
-import { FormatOptions, Formatter } from './formatter';
+import { Iterables, Promises, Strings } from '../../system';
+import { ContactPresence } from '../../vsls/vsls';
 import {
 	GitCommit,
 	GitLogCommit,
@@ -27,8 +28,7 @@ import {
 	RemoteProvider,
 } from '../git';
 import { GitUri } from '../gitUri';
-import { Iterables, Promises, Strings } from '../../system';
-import { ContactPresence } from '../../vsls/vsls';
+import { FormatOptions, Formatter } from './formatter';
 
 const emptyStr = '';
 
@@ -38,7 +38,7 @@ export interface CommitFormatOptions extends FormatOptions {
 	dateStyle?: DateStyle;
 	editor?: { line: number; uri: Uri };
 	footnotes?: Map<number, string>;
-	getBranchAndTagTips?: (sha: string) => string | undefined;
+	getBranchAndTagTips?: (sha: string, options?: { compact?: boolean; icons?: boolean }) => string | undefined;
 	markdown?: boolean;
 	messageAutolinks?: boolean;
 	messageIndent?: number;
@@ -48,6 +48,7 @@ export interface CommitFormatOptions extends FormatOptions {
 	presence?: ContactPresence;
 	previousLineDiffUris?: { current: GitUri; previous: GitUri | undefined };
 	remotes?: GitRemote<RemoteProvider>[];
+	unpublished?: boolean;
 
 	tokenOptions?: {
 		ago?: Strings.TokenOptions;
@@ -61,6 +62,7 @@ export interface CommitFormatOptions extends FormatOptions {
 		authorNotYou?: Strings.TokenOptions;
 		avatar?: Strings.TokenOptions;
 		changes?: Strings.TokenOptions;
+		changesDetail?: Strings.TokenOptions;
 		changesShort?: Strings.TokenOptions;
 		commands?: Strings.TokenOptions;
 		committerAgo?: Strings.TokenOptions;
@@ -248,6 +250,15 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 		);
 	}
 
+	get changesDetail(): string {
+		return this._padOrTruncate(
+			GitLogCommit.is(this._item)
+				? this._item.getFormattedDiffStatus({ expand: true, separator: ', ' })
+				: emptyStr,
+			this._options.tokenOptions.changesDetail,
+		);
+	}
+
 	get changesShort(): string {
 		return this._padOrTruncate(
 			GitLogCommit.is(this._item)
@@ -301,12 +312,38 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 
 		commands = `---\n\n[$(git-commit) ${this.id}](${ShowQuickCommitCommand.getMarkdownCommandArgs(
 			this._item.sha,
-		)} "Show Commit")${separator}`;
+		)} "Show Commit")`;
+
+		commands += ` &nbsp;&nbsp;[$(compare-changes)](${DiffWithCommand.getMarkdownCommandArgs(
+			this._item,
+			this._options.editor?.line,
+		)} "Open Changes")`;
+
+		if (this._item.previousSha != null) {
+			const uri = GitUri.toRevisionUri(
+				this._item.previousSha,
+				this._item.previousUri.fsPath,
+				this._item.repoPath,
+			);
+			commands += ` &nbsp;&nbsp;[$(versions)](${OpenFileAtRevisionCommand.getMarkdownCommandArgs(
+				uri,
+				FileAnnotationType.Blame,
+				this._options.editor?.line,
+			)} "Open Blame Prior to this Change")`;
+		}
+
+		if (this._options.remotes != null && this._options.remotes.length !== 0) {
+			const providers = GitRemote.getHighlanderProviders(this._options.remotes);
+
+			commands += ` &nbsp;&nbsp;[$(globe)](${OpenCommitOnRemoteCommand.getMarkdownCommandArgs(
+				this._item.sha,
+			)} "Open Commit on ${providers?.length ? providers[0].name : 'Remote'}")`;
+		}
 
 		const { pullRequestOrRemote: pr } = this._options;
 		if (pr != null) {
 			if (PullRequest.is(pr)) {
-				commands += `[$(git-pull-request) PR #${
+				commands += `${separator}[$(git-pull-request) PR #${
 					pr.id
 				}](${getMarkdownActionCommand<OpenPullRequestActionContext>('openPullRequest', {
 					repoPath: this._item.repoPath,
@@ -316,46 +353,20 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 					Container.actionRunners.count('openPullRequest') == 1 ? ` on ${pr.provider.name}` : '...'
 				}\n${GlyphChars.Dash.repeat(2)}\n${Strings.escapeMarkdown(pr.title).replace(/"/g, '\\"')}\n${
 					pr.state
-				}, ${pr.formatDateFromNow()}")${separator}`;
+				}, ${pr.formatDateFromNow()}")`;
 			} else if (pr instanceof Promises.CancellationError) {
-				commands += `[$(git-pull-request) PR $(sync~spin)](command:${Commands.RefreshHover} "Searching for a Pull Request (if any) that introduced this commit...")${separator}`;
+				commands += `${separator}[$(git-pull-request) PR $(loading~spin)](command:${Commands.RefreshHover} "Searching for a Pull Request (if any) that introduced this commit...")`;
 			} else if (pr.provider != null && Container.config.integrations.enabled) {
-				commands += `[$(plug) Connect to ${pr.provider.name}${
+				commands += `${separator}[$(plug) Connect to ${pr.provider.name}${
 					GlyphChars.Ellipsis
 				}](${ConnectRemoteProviderCommand.getMarkdownCommandArgs(pr)} "Connect to ${
 					pr.provider.name
-				} to enable the display of the Pull Request (if any) that introduced this commit")${separator}`;
+				} to enable the display of the Pull Request (if any) that introduced this commit")`;
 			}
 		}
 
-		commands += `[$(compare-changes)](${DiffWithCommand.getMarkdownCommandArgs(
-			this._item,
-			this._options.editor?.line,
-		)} "Open Changes")${separator}`;
-
-		if (this._item.previousSha != null) {
-			const uri = GitUri.toRevisionUri(
-				this._item.previousSha,
-				this._item.previousUri.fsPath,
-				this._item.repoPath,
-			);
-			commands += `[$(history)](${OpenFileAtRevisionCommand.getMarkdownCommandArgs(
-				uri,
-				FileAnnotationType.Blame,
-				this._options.editor?.line,
-			)} "Blame Previous Revision")${separator}`;
-		}
-
-		if (this._options.remotes != null && this._options.remotes.length !== 0) {
-			const providers = GitRemote.getHighlanderProviders(this._options.remotes);
-
-			commands += `[$(globe)](${OpenCommitOnRemoteCommand.getMarkdownCommandArgs(
-				this._item.sha,
-			)} "Open Commit on ${providers?.length ? providers[0].name : 'Remote'}")${separator}`;
-		}
-
 		if (Container.actionRunners.count('hover.commands') > 0) {
-			commands += `[$(feedback) Discuss / Collab${
+			commands += `${separator}[$(organization) Team${GlyphChars.SpaceThinnest}${
 				GlyphChars.Ellipsis
 			}](${getMarkdownActionCommand<HoverCommandsActionContext>('hover.commands', {
 				repoPath: this._item.repoPath,
@@ -374,10 +385,10 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 								line: this._options.editor?.line,
 						  }
 						: undefined,
-			})} "Want to Discuss or Collaborate? Have Comments, Questions, or Need Help?")${separator}`;
+			})} "Show Team Actions")`;
 		}
 
-		commands += `[$(ellipsis)](${ShowQuickCommitFileCommand.getMarkdownCommandArgs({
+		commands += `${separator}[$(ellipsis)](${ShowQuickCommitFileCommand.getMarkdownCommandArgs({
 			revisionUri: GitUri.toRevisionUri(this._item.toGitUri()).toString(true),
 		})} "Show More Actions")`;
 
@@ -421,18 +432,22 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 			this._options.footnotes == null || this._options.footnotes.size === 0
 				? emptyStr
 				: Iterables.join(
-						Iterables.map(
-							this._options.footnotes,
-							([i, footnote]) => `${Strings.getSuperscript(i)} ${footnote}`,
+						Iterables.map(this._options.footnotes, ([i, footnote]) =>
+							this._options.markdown ? footnote : `${Strings.getSuperscript(i)} ${footnote}`,
 						),
-						'\n',
+						this._options.markdown ? '\\\n' : '\n',
 				  ),
 			this._options.tokenOptions.footnotes,
 		);
 	}
 
 	get id(): string {
-		return this._padOrTruncate(this._item.shortSha ?? emptyStr, this._options.tokenOptions.id);
+		const sha = this._padOrTruncate(this._item.shortSha ?? emptyStr, this._options.tokenOptions.id);
+		if (this._options.markdown && this._options.unpublished) {
+			return `<span style="color:#35b15e;">${sha} (unpublished)</span>`;
+		}
+
+		return sha;
 	}
 
 	get message(): string {
@@ -485,7 +500,9 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 		let text;
 		if (PullRequest.is(pr)) {
 			if (this._options.markdown) {
-				text = `[PR #${pr.id}](${getMarkdownActionCommand<OpenPullRequestActionContext>('openPullRequest', {
+				const prTitle = Strings.escapeMarkdown(pr.title).replace(/"/g, '\\"').trim();
+
+				text = `PR [**#${pr.id}**](${getMarkdownActionCommand<OpenPullRequestActionContext>('openPullRequest', {
 					repoPath: this._item.repoPath,
 					provider: { id: pr.provider.id, name: pr.provider.name, domain: pr.provider.domain },
 					pullRequest: { id: pr.id, url: pr.url },
@@ -494,6 +511,18 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 				}\n${GlyphChars.Dash.repeat(2)}\n${Strings.escapeMarkdown(pr.title).replace(/"/g, '\\"')}\n${
 					pr.state
 				}, ${pr.formatDateFromNow()}")`;
+
+				if (this._options.footnotes != null) {
+					const index = this._options.footnotes.size + 1;
+					this._options.footnotes.set(
+						index,
+						`[**$(git-pull-request) ${prTitle}**](${pr.url} "Open Pull Request \\#${pr.id} on ${
+							pr.provider.name
+						}")\\\n${GlyphChars.Space.repeat(4)} #${
+							pr.id
+						} ${pr.state.toLocaleLowerCase()} ${pr.formatDateFromNow()}`,
+					);
+				}
 			} else if (this._options.footnotes != null) {
 				const index = this._options.footnotes.size + 1;
 				this._options.footnotes.set(
@@ -507,7 +536,7 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 			}
 		} else if (pr instanceof Promises.CancellationError) {
 			text = this._options.markdown
-				? `[PR $(sync~spin)](command:${Commands.RefreshHover} "Searching for a Pull Request (if any) that introduced this commit...")`
+				? `[PR $(loading~spin)](command:${Commands.RefreshHover} "Searching for a Pull Request (if any) that introduced this commit...")`
 				: this._options?.pullRequestPendingMessage ?? emptyStr;
 		} else {
 			return this._padOrTruncate(emptyStr, this._options.tokenOptions.pullRequest);
@@ -541,7 +570,13 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 	}
 
 	get tips(): string {
-		const branchAndTagTips = this._options.getBranchAndTagTips?.(this._item.sha);
+		let branchAndTagTips = this._options.getBranchAndTagTips?.(this._item.sha, { icons: this._options.markdown });
+		if (branchAndTagTips != null && this._options.markdown) {
+			const tips = branchAndTagTips.split(', ');
+			branchAndTagTips = tips
+				.map(t => `<span style="color:#ffffff;background-color:#1d76db;">&nbsp;&nbsp;${t}&nbsp;&nbsp;</span>`)
+				.join(GlyphChars.Space.repeat(3));
+		}
 		return this._padOrTruncate(branchAndTagTips ?? emptyStr, this._options.tokenOptions.tips);
 	}
 
@@ -605,7 +640,10 @@ export class CommitFormatter extends Formatter<GitCommit, CommitFormatOptions> {
 		return super.fromTemplateCoreAsync(this, template, commit, dateFormatOrOptions);
 	}
 
-	static has(template: string, ...tokens: (keyof NonNullable<CommitFormatOptions['tokenOptions']>)[]): boolean {
+	static override has(
+		template: string,
+		...tokens: (keyof NonNullable<CommitFormatOptions['tokenOptions']>)[]
+	): boolean {
 		return super.has<CommitFormatOptions>(template, ...tokens);
 	}
 }

@@ -1,14 +1,14 @@
 'use strict';
 import { TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { CommitNode } from './commitNode';
-import { LoadMoreNode } from './common';
 import { Container } from '../../container';
 import { GitLog } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { insertDateMarkers } from './helpers';
-import { FilesQueryResults, ResultsFilesNode } from './resultsFilesNode';
 import { debug, gate, Iterables, Promises } from '../../system';
 import { ViewsWithCommits } from '../viewBase';
+import { CommitNode } from './commitNode';
+import { LoadMoreNode } from './common';
+import { insertDateMarkers } from './helpers';
+import { FilesQueryResults, ResultsFilesNode } from './resultsFilesNode';
 import { ContextValues, PageableViewNode, ViewNode } from './viewNode';
 
 export interface CommitsQueryResults {
@@ -20,7 +20,8 @@ export interface CommitsQueryResults {
 
 export class ResultsCommitsNode<View extends ViewsWithCommits = ViewsWithCommits>
 	extends ViewNode<View>
-	implements PageableViewNode {
+	implements PageableViewNode
+{
 	constructor(
 		view: View,
 		parent: ViewNode,
@@ -60,7 +61,7 @@ export class ResultsCommitsNode<View extends ViewsWithCommits = ViewsWithCommits
 		return this._results.comparison?.ref2;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return `${this.parent!.id}:results:commits${this._options.id ? `:${this._options.id}` : ''}`;
 	}
 
@@ -139,17 +140,17 @@ export class ResultsCommitsNode<View extends ViewsWithCommits = ViewsWithCommits
 		}
 
 		const item = new TreeItem(label ?? this._label, state);
+		item.id = this.id;
 		item.contextValue =
 			this._results.comparison != null ? ContextValues.CompareResultsCommits : ContextValues.SearchResultsCommits;
 		item.description = this._options.description;
-		item.id = this.id;
 
 		return item;
 	}
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		if (reset) {
 			this._commitsQueryResults = undefined;
 			void this.getCommitsQueryResults();

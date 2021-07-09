@@ -13,9 +13,11 @@ export class LineHistoryView extends ViewBase<LineHistoryTrackerNode, LineHistor
 
 	constructor() {
 		super('gitlens.views.lineHistory', 'Line History');
+
+		void setContext(ContextKeys.ViewsLineHistoryEditorFollowing, true);
 	}
 
-	protected get showCollapseAll(): boolean {
+	protected override get showCollapseAll(): boolean {
 		return false;
 	}
 
@@ -47,7 +49,7 @@ export class LineHistoryView extends ViewBase<LineHistoryTrackerNode, LineHistor
 		commands.registerCommand(this.getQualifiedCommand('setShowAvatarsOff'), () => this.setShowAvatars(false), this);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -64,32 +66,33 @@ export class LineHistoryView extends ViewBase<LineHistoryTrackerNode, LineHistor
 		return true;
 	}
 
-	protected onConfigurationChanged(e: ConfigurationChangeEvent) {
-		if (configuration.changed(e, 'views', this.configKey, 'enabled')) {
-			void setContext(ContextKeys.ViewsLineHistoryEditorFollowing, true);
-		}
-
-		super.onConfigurationChanged(e);
-	}
-
 	private changeBase() {
 		void this.root?.changeBase();
 	}
 
 	private setEditorFollowing(enabled: boolean) {
+		const root = this.ensureRoot();
+		if (!root.hasUri) return;
+
 		void setContext(ContextKeys.ViewsLineHistoryEditorFollowing, enabled);
+
 		this.root?.setEditorFollowing(enabled);
 
 		if (this.description?.endsWith(pinnedSuffix)) {
 			if (enabled) {
 				this.description = this.description.substr(0, this.description.length - pinnedSuffix.length);
 			}
-		} else if (!enabled) {
+		} else if (!enabled && this.description != null) {
 			this.description += pinnedSuffix;
+		}
+
+		if (enabled) {
+			void root.ensureSubscription();
+			void this.refresh(true);
 		}
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
 	}
 }

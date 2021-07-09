@@ -6,8 +6,8 @@ import { GlyphChars } from '../constants';
 import { Container } from '../container';
 import { RepositoryChange, RepositoryChangeComparisonMode, RepositoryChangeEvent } from '../git/git';
 import { GitUri } from '../git/gitUri';
-import { ContributorsNode, RepositoryFolderNode, unknownGitUri, ViewNode } from './nodes';
 import { debug, gate, Strings } from '../system';
+import { ContributorsNode, RepositoryFolderNode, unknownGitUri, ViewNode } from './nodes';
 import { ViewBase } from './viewBase';
 
 export class ContributorsRepositoryNode extends RepositoryFolderNode<ContributorsView, ContributorsNode> {
@@ -20,7 +20,7 @@ export class ContributorsRepositoryNode extends RepositoryFolderNode<Contributor
 	}
 
 	@debug()
-	protected async subscribe() {
+	protected override async subscribe() {
 		return Disposable.from(
 			await super.subscribe(),
 			Avatars.onDidFetch(e => this.child?.updateAvatar(e.email)),
@@ -39,7 +39,7 @@ export class ContributorsRepositoryNode extends RepositoryFolderNode<Contributor
 }
 
 export class ContributorsViewNode extends ViewNode<ContributorsView> {
-	protected splatted = true;
+	protected override splatted = true;
 	private children: ContributorsRepositoryNode[] | undefined;
 
 	constructor(view: ContributorsView) {
@@ -70,8 +70,23 @@ export class ContributorsViewNode extends ViewNode<ContributorsView> {
 				this.view.description = `${Strings.pad(GlyphChars.Warning, 0, 2)}Auto-refresh unavailable`;
 			}
 
-			const contributors = await child.repo.getContributors();
-			if (contributors.length === 0) {
+			const children = await child.getChildren();
+
+			// const all = Container.config.views.contributors.showAllBranches;
+
+			// let ref: string | undefined;
+			// // If we aren't getting all branches, get the upstream of the current branch if there is one
+			// if (!all) {
+			// 	try {
+			// 		const branch = await Container.git.getBranch(this.uri.repoPath);
+			// 		if (branch?.upstream?.name != null && !branch.upstream.missing) {
+			// 			ref = '@{u}';
+			// 		}
+			// 	} catch {}
+			// }
+
+			// const contributors = await child.repo.getContributors({ all: all, ref: ref });
+			if (children.length === 0) {
 				this.view.message = 'No contributors could be found.';
 				this.view.title = 'Contributors';
 
@@ -81,9 +96,9 @@ export class ContributorsViewNode extends ViewNode<ContributorsView> {
 			}
 
 			this.view.message = undefined;
-			this.view.title = `Contributors (${contributors.length})`;
+			this.view.title = `Contributors (${children.length})`;
 
-			return child.getChildren();
+			return children;
 		}
 
 		return this.children;
@@ -94,7 +109,7 @@ export class ContributorsViewNode extends ViewNode<ContributorsView> {
 		return item;
 	}
 
-	async getSplattedChild() {
+	override async getSplattedChild() {
 		if (this.children == null) {
 			await this.getChildren();
 		}
@@ -104,7 +119,7 @@ export class ContributorsViewNode extends ViewNode<ContributorsView> {
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		if (reset && this.children != null) {
 			for (const child of this.children) {
 				child.dispose();
@@ -156,11 +171,34 @@ export class ContributorsView extends ViewBase<ContributorsViewNode, Contributor
 			() => this.setFilesLayout(ViewFilesLayout.Tree),
 			this,
 		);
+
+		commands.registerCommand(
+			this.getQualifiedCommand('setShowAllBranchesOn'),
+			() => this.setShowAllBranches(true),
+			this,
+		);
+		commands.registerCommand(
+			this.getQualifiedCommand('setShowAllBranchesOff'),
+			() => this.setShowAllBranches(false),
+			this,
+		);
+
 		commands.registerCommand(this.getQualifiedCommand('setShowAvatarsOn'), () => this.setShowAvatars(true), this);
 		commands.registerCommand(this.getQualifiedCommand('setShowAvatarsOff'), () => this.setShowAvatars(false), this);
+
+		commands.registerCommand(
+			this.getQualifiedCommand('setShowStatisticsOn'),
+			() => this.setShowStatistics(true),
+			this,
+		);
+		commands.registerCommand(
+			this.getQualifiedCommand('setShowStatisticsOff'),
+			() => this.setShowStatistics(false),
+			this,
+		);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -169,7 +207,8 @@ export class ContributorsView extends ViewBase<ContributorsViewNode, Contributor
 			!configuration.changed(e, 'defaultDateSource') &&
 			!configuration.changed(e, 'defaultDateStyle') &&
 			!configuration.changed(e, 'defaultGravatarsStyle') &&
-			!configuration.changed(e, 'defaultTimeFormat')
+			!configuration.changed(e, 'defaultTimeFormat') &&
+			!configuration.changed(e, 'sortContributorsBy')
 		) {
 			return false;
 		}
@@ -178,10 +217,18 @@ export class ContributorsView extends ViewBase<ContributorsViewNode, Contributor
 	}
 
 	private setFilesLayout(layout: ViewFilesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'files', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.files.layout` as const, layout);
+	}
+
+	private setShowAllBranches(enabled: boolean) {
+		return configuration.updateEffective(`views.${this.configKey}.showAllBranches` as const, enabled);
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
+	}
+
+	private setShowStatistics(enabled: boolean) {
+		return configuration.updateEffective(`views.${this.configKey}.showStatistics` as const, enabled);
 	}
 }

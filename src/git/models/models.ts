@@ -1,7 +1,7 @@
 'use strict';
-import { GitBranch } from './branch';
 import { GlyphChars } from '../../constants';
 import { Container } from '../../container';
+import { GitBranch } from './branch';
 
 const emptyStr = '';
 
@@ -110,7 +110,7 @@ export interface GitBranchReference {
 	name: string;
 	ref: string;
 	readonly remote: boolean;
-	readonly tracking?: string;
+	readonly upstream?: { name: string; missing: boolean };
 	repoPath: string;
 }
 
@@ -147,7 +147,7 @@ export namespace GitReference {
 	export function create(
 		ref: string,
 		repoPath: string,
-		options: { refType: 'branch'; name: string; remote: boolean; tracking?: string },
+		options: { refType: 'branch'; name: string; remote: boolean; upstream?: { name: string; missing: boolean } },
 	): GitBranchReference;
 	export function create(
 		ref: string,
@@ -211,7 +211,7 @@ export namespace GitReference {
 			refType: branch.refType,
 			name: branch.name,
 			remote: branch.remote,
-			tracking: branch.tracking,
+			upstream: branch.upstream,
 		});
 	}
 
@@ -321,7 +321,7 @@ export namespace GitReference {
 				}
 			}
 
-			return options.capitalize && options.expand
+			return options.capitalize && options.expand && options.label !== false
 				? `${result[0].toLocaleUpperCase()}${result.substring(1)}`
 				: result;
 		}
@@ -344,6 +344,7 @@ export * from './blameCommit';
 export * from './branch';
 export * from './commit';
 export * from './contributor';
+export * from './defaultBranch';
 export * from './diff';
 export * from './file';
 export * from './issue';
@@ -362,3 +363,4 @@ export * from './stashCommit';
 export * from './status';
 export * from './tag';
 export * from './tree';
+export * from './user';

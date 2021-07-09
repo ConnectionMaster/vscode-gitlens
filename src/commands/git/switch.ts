@@ -3,6 +3,7 @@ import { ProgressLocation, QuickPickItem, window } from 'vscode';
 import { BranchSorting } from '../../config';
 import { Container } from '../../container';
 import { GitReference, Repository } from '../../git/git';
+import { Arrays } from '../../system';
 import {
 	appendReposToTitle,
 	inputBranchNameStep,
@@ -17,7 +18,6 @@ import {
 	StepSelection,
 	StepState,
 } from '../quickCommand';
-import { Arrays } from '../../system';
 
 interface Context {
 	repos: Repository[];
@@ -78,11 +78,11 @@ export class SwitchGitCommand extends QuickCommand<State> {
 		));
 	}
 
-	isMatch(key: string) {
+	override isMatch(key: string) {
 		return super.isMatch(key) || key === 'checkout';
 	}
 
-	isFuzzyMatch(name: string) {
+	override isFuzzyMatch(name: string) {
 		return super.isFuzzyMatch(name) || name === 'checkout';
 	}
 
@@ -147,7 +147,7 @@ export class SwitchGitCommand extends QuickCommand<State> {
 				context.title = `Create Branch and ${this.title}`;
 
 				const branches = await Container.git.getBranches(state.reference.repoPath, {
-					filter: b => b.tracking === state.reference!.name,
+					filter: b => b.upstream?.name === state.reference!.name,
 					sort: { orderBy: BranchSorting.DateDesc },
 				});
 

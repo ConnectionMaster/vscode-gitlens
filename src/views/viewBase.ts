@@ -3,12 +3,10 @@ import {
 	CancellationToken,
 	commands,
 	ConfigurationChangeEvent,
-	ConfigurationTarget,
 	Disposable,
 	Event,
 	EventEmitter,
 	MarkdownString,
-	MessageItem,
 	TreeDataProvider,
 	TreeItem,
 	TreeItemCollapsibleState,
@@ -17,8 +15,6 @@ import {
 	TreeViewVisibilityChangeEvent,
 	window,
 } from 'vscode';
-import { BranchesView } from './branchesView';
-import { CommitsView } from './commitsView';
 import {
 	BranchesViewConfig,
 	CommitsViewConfig,
@@ -37,16 +33,18 @@ import {
 	ViewsConfigKeys,
 } from '../configuration';
 import { Container } from '../container';
+import { Logger } from '../logger';
+import { debug, Functions, log, Promises } from '../system';
+import { BranchesView } from './branchesView';
+import { CommitsView } from './commitsView';
 import { ContributorsView } from './contributorsView';
 import { FileHistoryView } from './fileHistoryView';
 import { LineHistoryView } from './lineHistoryView';
-import { Logger } from '../logger';
 import { PageableViewNode, ViewNode } from './nodes';
 import { RemotesView } from './remotesView';
 import { RepositoriesView } from './repositoriesView';
 import { SearchAndCompareView } from './searchAndCompareView';
 import { StashesView } from './stashesView';
-import { debug, Functions, log, Promises, Strings } from '../system';
 import { TagsView } from './tagsView';
 
 export type View =
@@ -85,8 +83,9 @@ export abstract class ViewBase<
 		| RepositoriesViewConfig
 		| SearchAndCompareViewConfig
 		| StashesViewConfig
-		| TagsViewConfig
-> implements TreeDataProvider<ViewNode>, Disposable {
+		| TagsViewConfig,
+> implements TreeDataProvider<ViewNode>, Disposable
+{
 	protected _onDidChangeTreeData = new EventEmitter<ViewNode | undefined>();
 	get onDidChangeTreeData(): Event<ViewNode | undefined> {
 		return this._onDidChangeTreeData.event;
@@ -110,12 +109,7 @@ export abstract class ViewBase<
 
 	constructor(public readonly id: string, public readonly name: string) {
 		if (Logger.isDebugging || Container.config.debug) {
-			const getTreeItem = this.getTreeItem;
-			this.getTreeItem = async function (this: ViewBase<RootNode, ViewConfig>, node: ViewNode) {
-				const item = await getTreeItem.apply(this, [node]);
-
-				const parent = node.getParent();
-
+			function addDebuggingInfo(item: TreeItem, node: ViewNode, parent: ViewNode | undefined) {
 				if (item.tooltip == null) {
 					item.tooltip = new MarkdownString(
 						item.label != null && typeof item.label !== 'string' ? item.label.label : item.label ?? '',
@@ -133,6 +127,28 @@ export abstract class ViewBase<
 						}`,
 					);
 				}
+			}
+
+			const getTreeItem = this.getTreeItem;
+			this.getTreeItem = async function (this: ViewBase<RootNode, ViewConfig>, node: ViewNode) {
+				const item = await getTreeItem.apply(this, [node]);
+
+				const parent = node.getParent();
+
+				if (node.resolveTreeItem != null) {
+					const resolveTreeItem = node.resolveTreeItem;
+					node.resolveTreeItem = async function (this: ViewBase<RootNode, ViewConfig>, item: TreeItem) {
+						const resolvedItem = await resolveTreeItem.apply(this, [item]);
+
+						addDebuggingInfo(resolvedItem, node, parent);
+
+						return resolvedItem;
+					};
+
+					return item;
+				}
+
+				addDebuggingInfo(item, node, parent);
 
 				return item;
 			};
@@ -151,7 +167,7 @@ export abstract class ViewBase<
 
 		this.initialize({ showCollapseAll: this.showCollapseAll });
 
-		setImmediate(() => this.onConfigurationChanged(configuration.initializingChangeEvent));
+		setImmediate(() => this.onConfigurationChanged());
 	}
 
 	protected get showCollapseAll(): boolean {
@@ -161,9 +177,9 @@ export abstract class ViewBase<
 	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		if (!configuration.changed(e, 'views')) return false;
 
-		if (configuration.changed(e, 'views', this.configKey)) return true;
+		if (configuration.changed(e, `views.${this.configKey}` as const)) return true;
 		for (const key of viewsCommonConfigKeys) {
-			if (configuration.changed(e, 'views', key)) return true;
+			if (configuration.changed(e, `views.${key}` as const)) return true;
 		}
 
 		return false;
@@ -212,8 +228,8 @@ export abstract class ViewBase<
 
 	protected abstract getRoot(): RootNode;
 	protected abstract registerCommands(): void;
-	protected onConfigurationChanged(e: ConfigurationChangeEvent): void {
-		if (!configuration.initializing(e) && this.root != null) {
+	protected onConfigurationChanged(e?: ConfigurationChangeEvent): void {
+		if (e != null && this.root != null) {
 			void this.refresh(true);
 		}
 	}
@@ -224,7 +240,7 @@ export abstract class ViewBase<
 			this._onDidChangeTreeData = new EventEmitter<ViewNode>();
 		}
 
-		this.tree = window.createTreeView(this.id, {
+		this.tree = window.createTreeView<ViewNode<View>>(this.id, {
 			...options,
 			treeDataProvider: this,
 		});
@@ -258,6 +274,10 @@ export abstract class ViewBase<
 
 	getTreeItem(node: ViewNode): TreeItem | Promise<TreeItem> {
 		return node.getTreeItem();
+	}
+
+	resolveTreeItem(item: TreeItem, node: ViewNode): TreeItem | Promise<TreeItem> {
+		return node.resolveTreeItem(item);
 	}
 
 	protected onElementCollapsed(e: TreeViewExpansionEvent<ViewNode>) {
@@ -502,23 +522,6 @@ export abstract class ViewBase<
 			void (await commands.executeCommand(`${this.id}.focus`));
 		} catch (ex) {
 			Logger.error(ex);
-
-			const section = Strings.splitSingle(this.id, '.')[1];
-			// eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-			if (!configuration.get(section as any, 'enabled')) {
-				const actions: MessageItem[] = [{ title: 'Enable' }, { title: 'Cancel', isCloseAffordance: true }];
-
-				const result = await window.showErrorMessage(
-					`Unable to show the ${this.name} view since it's currently disabled. Would you like to enable it?`,
-					...actions,
-				);
-
-				if (result === actions[0]) {
-					await configuration.update(section as any, 'enabled', true, ConfigurationTarget.Global);
-
-					void (await commands.executeCommand(`${this.id}.focus`));
-				}
-			}
 		}
 	}
 

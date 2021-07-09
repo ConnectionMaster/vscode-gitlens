@@ -1,6 +1,7 @@
 'use strict';
 import { Container } from '../../container';
 import { GitAuthor, GitLogCommit, GitRevisionReference, GitStashCommit, Repository } from '../../git/git';
+import { CommandQuickPickItem, CommitFilesQuickPickItem, GitCommandQuickPickItem } from '../../quickpicks';
 import {
 	PartialStepState,
 	pickCommitStep,
@@ -13,7 +14,6 @@ import {
 	StepResult,
 	StepState,
 } from '../quickCommand';
-import { CommandQuickPickItem, CommitFilesQuickPickItem, GitCommandQuickPickItem } from '../../quickpicks';
 
 interface Context {
 	repos: Repository[];
@@ -60,11 +60,11 @@ export class ShowGitCommand extends QuickCommand<State> {
 		};
 	}
 
-	get canConfirm() {
+	override get canConfirm() {
 		return false;
 	}
 
-	protected getStepState(limitBackNavigation: boolean): PartialStepState<State> {
+	protected override getStepState(limitBackNavigation: boolean): PartialStepState<State> {
 		// This command is special since we want to allow backing up all the way to the commit,
 		// so ensure the startingStep is at most 1
 		const state = super.getStepState(limitBackNavigation);

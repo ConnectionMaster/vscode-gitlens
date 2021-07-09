@@ -16,14 +16,18 @@ import {
 	SymbolInformation,
 	SymbolKind,
 	TextDocument,
+	Uri,
 } from 'vscode';
 import {
+	command,
 	Commands,
 	DiffWithPreviousCommandArgs,
+	OpenOnRemoteCommandArgs,
 	ShowCommitsInViewCommandArgs,
 	ShowQuickCommitCommandArgs,
 	ShowQuickCommitFileCommandArgs,
 	ShowQuickFileHistoryCommandArgs,
+	ToggleFileChangesAnnotationCommandArgs,
 } from '../commands';
 import {
 	CodeLensCommand,
@@ -31,10 +35,11 @@ import {
 	CodeLensLanguageScope,
 	CodeLensScopes,
 	configuration,
+	FileAnnotationType,
 } from '../configuration';
 import { BuiltInCommands, DocumentSchemes } from '../constants';
 import { Container } from '../container';
-import { GitBlame, GitBlameLines, GitCommit } from '../git/git';
+import { GitBlame, GitBlameLines, GitCommit, RemoteResourceType } from '../git/git';
 import { GitService } from '../git/gitService';
 import { GitUri } from '../git/gitUri';
 import { Logger } from '../logger';
@@ -521,8 +526,26 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		}
 
 		switch (lens.desiredCommand) {
+			case CodeLensCommand.CopyRemoteCommitUrl:
+				return this.applyCopyOrOpenCommitOnRemoteCommand<GitRecentChangeCodeLens>(
+					title,
+					lens,
+					recentCommit,
+					true,
+				);
+			case CodeLensCommand.CopyRemoteFileUrl:
+				return this.applyCopyOrOpenFileOnRemoteCommand<GitRecentChangeCodeLens>(
+					title,
+					lens,
+					recentCommit,
+					true,
+				);
 			case CodeLensCommand.DiffWithPrevious:
 				return this.applyDiffWithPreviousCommand<GitRecentChangeCodeLens>(title, lens, recentCommit);
+			case CodeLensCommand.OpenCommitOnRemote:
+				return this.applyCopyOrOpenCommitOnRemoteCommand<GitRecentChangeCodeLens>(title, lens, recentCommit);
+			case CodeLensCommand.OpenFileOnRemote:
+				return this.applyCopyOrOpenFileOnRemoteCommand<GitRecentChangeCodeLens>(title, lens, recentCommit);
 			case CodeLensCommand.RevealCommitInView:
 				return this.applyRevealCommitInViewCommand<GitRecentChangeCodeLens>(title, lens, recentCommit);
 			case CodeLensCommand.ShowCommitsInView:
@@ -537,6 +560,12 @@ export class GitCodeLensProvider implements CodeLensProvider {
 				return this.applyShowQuickFileHistoryCommand<GitRecentChangeCodeLens>(title, lens);
 			case CodeLensCommand.ToggleFileBlame:
 				return this.applyToggleFileBlameCommand<GitRecentChangeCodeLens>(title, lens);
+			case CodeLensCommand.ToggleFileChanges:
+				return this.applyToggleFileChangesCommand<GitRecentChangeCodeLens>(title, lens, recentCommit);
+			case CodeLensCommand.ToggleFileChangesOnly:
+				return this.applyToggleFileChangesCommand<GitRecentChangeCodeLens>(title, lens, recentCommit, true);
+			case CodeLensCommand.ToggleFileHeatmap:
+				return this.applyToggleFileHeatmapCommand<GitRecentChangeCodeLens>(title, lens);
 			default:
 				return lens;
 		}
@@ -572,8 +601,16 @@ export class GitCodeLensProvider implements CodeLensProvider {
 			Iterables.find(blame.commits.values(), c => c.author === author) ?? Iterables.first(blame.commits.values());
 
 		switch (lens.desiredCommand) {
+			case CodeLensCommand.CopyRemoteCommitUrl:
+				return this.applyCopyOrOpenCommitOnRemoteCommand<GitAuthorsCodeLens>(title, lens, commit, true);
+			case CodeLensCommand.CopyRemoteFileUrl:
+				return this.applyCopyOrOpenFileOnRemoteCommand<GitAuthorsCodeLens>(title, lens, commit, true);
 			case CodeLensCommand.DiffWithPrevious:
 				return this.applyDiffWithPreviousCommand<GitAuthorsCodeLens>(title, lens, commit);
+			case CodeLensCommand.OpenCommitOnRemote:
+				return this.applyCopyOrOpenCommitOnRemoteCommand<GitAuthorsCodeLens>(title, lens, commit);
+			case CodeLensCommand.OpenFileOnRemote:
+				return this.applyCopyOrOpenFileOnRemoteCommand<GitAuthorsCodeLens>(title, lens, commit);
 			case CodeLensCommand.RevealCommitInView:
 				return this.applyRevealCommitInViewCommand<GitAuthorsCodeLens>(title, lens, commit);
 			case CodeLensCommand.ShowCommitsInView:
@@ -588,6 +625,12 @@ export class GitCodeLensProvider implements CodeLensProvider {
 				return this.applyShowQuickFileHistoryCommand<GitAuthorsCodeLens>(title, lens);
 			case CodeLensCommand.ToggleFileBlame:
 				return this.applyToggleFileBlameCommand<GitAuthorsCodeLens>(title, lens);
+			case CodeLensCommand.ToggleFileChanges:
+				return this.applyToggleFileChangesCommand<GitAuthorsCodeLens>(title, lens, commit);
+			case CodeLensCommand.ToggleFileChangesOnly:
+				return this.applyToggleFileChangesCommand<GitAuthorsCodeLens>(title, lens, commit, true);
+			case CodeLensCommand.ToggleFileHeatmap:
+				return this.applyToggleFileHeatmapCommand<GitAuthorsCodeLens>(title, lens);
 			default:
 				return lens;
 		}
@@ -598,15 +641,64 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		lens: T,
 		commit: GitCommit | undefined,
 	): T {
-		const commandArgs: DiffWithPreviousCommandArgs = {
-			commit: commit,
-			uri: lens.uri!.toFileUri(),
-		};
-		lens.command = {
+		lens.command = command<[undefined, DiffWithPreviousCommandArgs]>({
 			title: title,
 			command: Commands.DiffWithPrevious,
-			arguments: [undefined, commandArgs],
-		};
+			arguments: [
+				undefined,
+				{
+					commit: commit,
+					uri: lens.uri!.toFileUri(),
+				},
+			],
+		});
+		return lens;
+	}
+
+	private applyCopyOrOpenCommitOnRemoteCommand<T extends GitRecentChangeCodeLens | GitAuthorsCodeLens>(
+		title: string,
+		lens: T,
+		commit: GitCommit,
+		clipboard: boolean = false,
+	): T {
+		lens.command = command<[OpenOnRemoteCommandArgs]>({
+			title: title,
+			command: Commands.OpenOnRemote,
+			arguments: [
+				{
+					resource: {
+						type: RemoteResourceType.Commit,
+						sha: commit.sha,
+					},
+					repoPath: commit.repoPath,
+					clipboard: clipboard,
+				},
+			],
+		});
+		return lens;
+	}
+
+	private applyCopyOrOpenFileOnRemoteCommand<T extends GitRecentChangeCodeLens | GitAuthorsCodeLens>(
+		title: string,
+		lens: T,
+		commit: GitCommit,
+		clipboard: boolean = false,
+	): T {
+		lens.command = command<[OpenOnRemoteCommandArgs]>({
+			title: title,
+			command: Commands.OpenOnRemote,
+			arguments: [
+				{
+					resource: {
+						type: RemoteResourceType.Revision,
+						fileName: commit.fileName,
+						sha: commit.sha,
+					},
+					repoPath: commit.repoPath,
+					clipboard: clipboard,
+				},
+			],
+		});
 		return lens;
 	}
 
@@ -615,15 +707,17 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		lens: T,
 		commit: GitCommit | undefined,
 	): T {
-		const commandArgs: ShowQuickCommitCommandArgs = {
-			commit: commit,
-			sha: commit === undefined ? undefined : commit.sha,
-		};
-		lens.command = {
+		lens.command = command<[Uri, ShowQuickCommitCommandArgs]>({
 			title: title,
 			command: commit?.isUncommitted ? '' : CodeLensCommand.RevealCommitInView,
-			arguments: [lens.uri!.toFileUri(), commandArgs],
-		};
+			arguments: [
+				lens.uri!.toFileUri(),
+				{
+					commit: commit,
+					sha: commit === undefined ? undefined : commit.sha,
+				},
+			],
+		});
 		return lens;
 	}
 
@@ -640,15 +734,16 @@ export class GitCodeLensProvider implements CodeLensProvider {
 			refs = [commit.ref];
 		}
 
-		const commandArgs: ShowCommitsInViewCommandArgs = {
-			repoPath: blame.repoPath,
-			refs: refs,
-		};
-		lens.command = {
+		lens.command = command<[ShowCommitsInViewCommandArgs]>({
 			title: title,
 			command: refs.length === 0 ? '' : Commands.ShowCommitsInView,
-			arguments: [commandArgs],
-		};
+			arguments: [
+				{
+					repoPath: blame.repoPath,
+					refs: refs,
+				},
+			],
+		});
 		return lens;
 	}
 
@@ -657,15 +752,17 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		lens: T,
 		commit: GitCommit | undefined,
 	): T {
-		const commandArgs: ShowQuickCommitCommandArgs = {
-			commit: commit,
-			sha: commit === undefined ? undefined : commit.sha,
-		};
-		lens.command = {
+		lens.command = command<[Uri, ShowQuickCommitCommandArgs]>({
 			title: title,
 			command: commit?.isUncommitted ? '' : CodeLensCommand.ShowQuickCommitDetails,
-			arguments: [lens.uri!.toFileUri(), commandArgs],
-		};
+			arguments: [
+				lens.uri!.toFileUri(),
+				{
+					commit: commit,
+					sha: commit === undefined ? undefined : commit.sha,
+				},
+			],
+		});
 		return lens;
 	}
 
@@ -674,15 +771,17 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		lens: T,
 		commit: GitCommit | undefined,
 	): T {
-		const commandArgs: ShowQuickCommitFileCommandArgs = {
-			commit: commit,
-			sha: commit === undefined ? undefined : commit.sha,
-		};
-		lens.command = {
+		lens.command = command<[Uri, ShowQuickCommitFileCommandArgs]>({
 			title: title,
 			command: commit?.isUncommitted ? '' : CodeLensCommand.ShowQuickCommitFileDetails,
-			arguments: [lens.uri!.toFileUri(), commandArgs],
-		};
+			arguments: [
+				lens.uri!.toFileUri(),
+				{
+					commit: commit,
+					sha: commit === undefined ? undefined : commit.sha,
+				},
+			],
+		});
 		return lens;
 	}
 
@@ -690,11 +789,11 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		title: string,
 		lens: T,
 	): T {
-		lens.command = {
+		lens.command = command<[Uri]>({
 			title: title,
 			command: CodeLensCommand.ShowQuickCurrentBranchHistory,
 			arguments: [lens.uri!.toFileUri()],
-		};
+		});
 		return lens;
 	}
 
@@ -702,14 +801,16 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		title: string,
 		lens: T,
 	): T {
-		const commandArgs: ShowQuickFileHistoryCommandArgs = {
-			range: lens.isFullRange ? undefined : lens.blameRange,
-		};
-		lens.command = {
+		lens.command = command<[Uri, ShowQuickFileHistoryCommandArgs]>({
 			title: title,
 			command: CodeLensCommand.ShowQuickFileHistory,
-			arguments: [lens.uri!.toFileUri(), commandArgs],
-		};
+			arguments: [
+				lens.uri!.toFileUri(),
+				{
+					range: lens.isFullRange ? undefined : lens.blameRange,
+				},
+			],
+		});
 		return lens;
 	}
 
@@ -717,11 +818,43 @@ export class GitCodeLensProvider implements CodeLensProvider {
 		title: string,
 		lens: T,
 	): T {
-		lens.command = {
+		lens.command = command<[Uri]>({
 			title: title,
 			command: Commands.ToggleFileBlame,
 			arguments: [lens.uri!.toFileUri()],
-		};
+		});
+		return lens;
+	}
+
+	private applyToggleFileChangesCommand<T extends GitRecentChangeCodeLens | GitAuthorsCodeLens>(
+		title: string,
+		lens: T,
+		commit: GitCommit,
+		only?: boolean,
+	): T {
+		lens.command = command<[Uri, ToggleFileChangesAnnotationCommandArgs]>({
+			title: title,
+			command: Commands.ToggleFileChanges,
+			arguments: [
+				lens.uri!.toFileUri(),
+				{
+					type: FileAnnotationType.Changes,
+					context: { sha: commit.sha, only: only, selection: false },
+				},
+			],
+		});
+		return lens;
+	}
+
+	private applyToggleFileHeatmapCommand<T extends GitRecentChangeCodeLens | GitAuthorsCodeLens>(
+		title: string,
+		lens: T,
+	): T {
+		lens.command = command<[Uri]>({
+			title: title,
+			command: Commands.ToggleFileHeatmap,
+			arguments: [lens.uri!.toFileUri()],
+		});
 		return lens;
 	}
 

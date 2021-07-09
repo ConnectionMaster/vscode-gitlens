@@ -14,12 +14,12 @@ import {
 	GitTrackingState,
 } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { Arrays, Iterables, Objects, Strings } from '../../system';
+import { Arrays, Iterables, Strings } from '../../system';
 import { RepositoriesView } from '../repositoriesView';
 import { FileNode, FolderNode } from './folderNode';
+import { RepositoryNode } from './repositoryNode';
 import { StatusFileNode } from './statusFileNode';
 import { ContextValues, ViewNode } from './viewNode';
-import { RepositoryNode } from './repositoryNode';
 
 export class StatusFilesNode extends ViewNode<RepositoriesView> {
 	static key = ':status-files';
@@ -46,7 +46,7 @@ export class StatusFilesNode extends ViewNode<RepositoriesView> {
 		this.repoPath = status.repoPath;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return StatusFilesNode.getId(this.repoPath);
 	}
 
@@ -97,19 +97,16 @@ export class StatusFilesNode extends ViewNode<RepositoriesView> {
 
 		const groups = Arrays.groupBy(files, s => s.fileName);
 
-		let children: FileNode[] = [
-			...Iterables.map(
-				Objects.values(groups),
-				files =>
-					new StatusFileNode(
-						this.view,
-						this,
-						repoPath,
-						files[files.length - 1],
-						files.map(s => s.commit),
-					),
-			),
-		];
+		let children: FileNode[] = Object.values(groups).map(
+			files =>
+				new StatusFileNode(
+					this.view,
+					this,
+					repoPath,
+					files[files.length - 1],
+					files.map(s => s.commit),
+				),
+		);
 
 		if (this.view.config.files.layout !== ViewFilesLayout.List) {
 			const hierarchy = Arrays.makeHierarchical(

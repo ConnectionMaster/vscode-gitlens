@@ -1,12 +1,13 @@
 'use strict';
+import { CustomRemoteType, RemotesConfig } from '../../configuration';
+import { Logger } from '../../logger';
 import { AzureDevOpsRemote } from './azure-devops';
 import { BitbucketRemote } from './bitbucket';
 import { BitbucketServerRemote } from './bitbucket-server';
-import { CustomRemoteType, RemotesConfig } from '../../configuration';
 import { CustomRemote } from './custom';
+import { GiteaRemote } from './gitea';
 import { GitHubRemote } from './github';
 import { GitLabRemote } from './gitlab';
-import { Logger } from '../../logger';
 import { RemoteProvider, RichRemoteProvider } from './provider';
 
 export { RemoteProvider, RichRemoteProvider };
@@ -38,8 +39,8 @@ const builtInProviders: RemoteProviders = [
 		creator: (domain: string, path: string) => new AzureDevOpsRemote(domain, path),
 	},
 	{
-		custom: false,
-		matcher: /\bbitbucket\b/i,
+		custom: true,
+		matcher: /^(.+\/(?:bitbucket|stash))\/scm\/(.+)$/i,
 		creator: (domain: string, path: string) => new BitbucketServerRemote(domain, path),
 	},
 	{
@@ -52,14 +53,21 @@ const builtInProviders: RemoteProviders = [
 		matcher: /\bvisualstudio\.com$/i,
 		creator: (domain: string, path: string) => new AzureDevOpsRemote(domain, path, undefined, undefined, true),
 	},
+	{
+		custom: false,
+		matcher: /\bgitea\b/i,
+		creator: (domain: string, path: string) => new GiteaRemote(domain, path),
+	},
 ];
 
 export class RemoteProviderFactory {
-	static factory(providers: RemoteProviders): (domain: string, path: string) => RemoteProvider | undefined {
-		return (domain: string, path: string) => this.create(providers, domain, path);
+	static factory(
+		providers: RemoteProviders,
+	): (url: string, domain: string, path: string) => RemoteProvider | undefined {
+		return (url: string, domain: string, path: string) => this.create(providers, url, domain, path);
 	}
 
-	static create(providers: RemoteProviders, domain: string, path: string): RemoteProvider | undefined {
+	static create(providers: RemoteProviders, url: string, domain: string, path: string): RemoteProvider | undefined {
 		try {
 			const key = domain.toLowerCase();
 			for (const { custom, matcher, creator } of providers) {
@@ -72,7 +80,7 @@ export class RemoteProviderFactory {
 				if (matcher.test(key)) return creator(domain, path);
 				if (!custom) continue;
 
-				const match = matcher.exec(`${domain}/${path}`);
+				const match = matcher.exec(url);
 				if (match != null) {
 					return creator(match[1], match[2]);
 				}
@@ -125,6 +133,8 @@ export class RemoteProviderFactory {
 			case CustomRemoteType.Custom:
 				return (domain: string, path: string) =>
 					new CustomRemote(domain, path, cfg.urls!, cfg.protocol, cfg.name);
+			case CustomRemoteType.Gitea:
+				return (domain: string, path: string) => new GiteaRemote(domain, path, cfg.protocol, cfg.name, true);
 			case CustomRemoteType.GitHub:
 				return (domain: string, path: string) => new GitHubRemote(domain, path, cfg.protocol, cfg.name, true);
 			case CustomRemoteType.GitLab:

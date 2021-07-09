@@ -2,10 +2,10 @@
 import { BranchSorting, configuration, DateStyle } from '../../configuration';
 import { Starred, WorkspaceState } from '../../constants';
 import { Container } from '../../container';
+import { Dates, debug, memoize } from '../../system';
 import { GitRemote, GitRevision } from '../git';
 import { GitBranchReference, GitReference, PullRequest, PullRequestState } from './models';
 import { GitStatus } from './status';
-import { Dates, debug, memoize } from '../../system';
 
 const whitespaceRegex = /\s/;
 const detachedHEADRegex = /^(?=.*\bHEAD\b)?(?=.*\bdetached\b).*$/;
@@ -25,6 +25,23 @@ export interface GitTrackingState {
 	behind: number;
 }
 
+export enum GitBranchStatus {
+	Ahead = 'ahead',
+	Behind = 'behind',
+	Diverged = 'diverged',
+	Local = 'local',
+	MissingUpstream = 'missingUpstream',
+	Remote = 'remote',
+	UpToDate = 'upToDate',
+	Unpublished = 'unpublished',
+}
+
+export interface BranchSortOptions {
+	current?: boolean;
+	missingUpstream?: boolean;
+	orderBy?: BranchSorting;
+}
+
 export class GitBranch implements GitBranchReference {
 	static is(branch: any): branch is GitBranch {
 		return branch instanceof GitBranch;
@@ -34,40 +51,27 @@ export class GitBranch implements GitBranchReference {
 		return branch?.refType === 'branch';
 	}
 
-	static sort(branches: GitBranch[], options?: { current?: boolean; orderBy?: BranchSorting }) {
+	static sort(branches: GitBranch[], options?: BranchSortOptions) {
 		options = { current: true, orderBy: configuration.get('sortBranchesBy'), ...options };
 
 		switch (options.orderBy) {
 			case BranchSorting.DateAsc:
 				return branches.sort(
 					(a, b) =>
+						(options!.missingUpstream
+							? (a.upstream?.missing ? -1 : 1) - (b.upstream?.missing ? -1 : 1)
+							: 0) ||
 						(options!.current ? (a.current ? -1 : 1) - (b.current ? -1 : 1) : 0) ||
 						(a.starred ? -1 : 1) - (b.starred ? -1 : 1) ||
 						(b.remote ? -1 : 1) - (a.remote ? -1 : 1) ||
 						(a.date == null ? -1 : a.date.getTime()) - (b.date == null ? -1 : b.date.getTime()),
 				);
-			case BranchSorting.DateDesc:
-				return branches.sort(
-					(a, b) =>
-						(options!.current ? (a.current ? -1 : 1) - (b.current ? -1 : 1) : 0) ||
-						(a.starred ? -1 : 1) - (b.starred ? -1 : 1) ||
-						(b.remote ? -1 : 1) - (a.remote ? -1 : 1) ||
-						(b.date == null ? -1 : b.date.getTime()) - (a.date == null ? -1 : a.date.getTime()),
-				);
 			case BranchSorting.NameAsc:
 				return branches.sort(
 					(a, b) =>
-						(options!.current ? (a.current ? -1 : 1) - (b.current ? -1 : 1) : 0) ||
-						(a.starred ? -1 : 1) - (b.starred ? -1 : 1) ||
-						(a.name === 'main' ? -1 : 1) - (b.name === 'main' ? -1 : 1) ||
-						(a.name === 'master' ? -1 : 1) - (b.name === 'master' ? -1 : 1) ||
-						(a.name === 'develop' ? -1 : 1) - (b.name === 'develop' ? -1 : 1) ||
-						(b.remote ? -1 : 1) - (a.remote ? -1 : 1) ||
-						b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' }),
-				);
-			default:
-				return branches.sort(
-					(a, b) =>
+						(options!.missingUpstream
+							? (a.upstream?.missing ? -1 : 1) - (b.upstream?.missing ? -1 : 1)
+							: 0) ||
 						(options!.current ? (a.current ? -1 : 1) - (b.current ? -1 : 1) : 0) ||
 						(a.starred ? -1 : 1) - (b.starred ? -1 : 1) ||
 						(a.name === 'main' ? -1 : 1) - (b.name === 'main' ? -1 : 1) ||
@@ -76,13 +80,39 @@ export class GitBranch implements GitBranchReference {
 						(b.remote ? -1 : 1) - (a.remote ? -1 : 1) ||
 						a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
 				);
+			case BranchSorting.NameDesc:
+				return branches.sort(
+					(a, b) =>
+						(options!.missingUpstream
+							? (a.upstream?.missing ? -1 : 1) - (b.upstream?.missing ? -1 : 1)
+							: 0) ||
+						(options!.current ? (a.current ? -1 : 1) - (b.current ? -1 : 1) : 0) ||
+						(a.starred ? -1 : 1) - (b.starred ? -1 : 1) ||
+						(a.name === 'main' ? -1 : 1) - (b.name === 'main' ? -1 : 1) ||
+						(a.name === 'master' ? -1 : 1) - (b.name === 'master' ? -1 : 1) ||
+						(a.name === 'develop' ? -1 : 1) - (b.name === 'develop' ? -1 : 1) ||
+						(b.remote ? -1 : 1) - (a.remote ? -1 : 1) ||
+						b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' }),
+				);
+			case BranchSorting.DateDesc:
+			default:
+				return branches.sort(
+					(a, b) =>
+						(options!.missingUpstream
+							? (a.upstream?.missing ? -1 : 1) - (b.upstream?.missing ? -1 : 1)
+							: 0) ||
+						(options!.current ? (a.current ? -1 : 1) - (b.current ? -1 : 1) : 0) ||
+						(a.starred ? -1 : 1) - (b.starred ? -1 : 1) ||
+						(b.remote ? -1 : 1) - (a.remote ? -1 : 1) ||
+						(b.date == null ? -1 : b.date.getTime()) - (a.date == null ? -1 : a.date.getTime()),
+				);
 		}
 	}
 
 	readonly refType = 'branch';
 	readonly detached: boolean;
 	readonly id: string;
-	readonly tracking?: string;
+	readonly upstream?: { name: string; missing: boolean };
 	readonly state: GitTrackingState;
 
 	constructor(
@@ -92,7 +122,7 @@ export class GitBranch implements GitBranchReference {
 		public readonly current: boolean,
 		public readonly date: Date | undefined,
 		public readonly sha?: string,
-		tracking?: string,
+		upstream?: { name: string; missing: boolean },
 		ahead: number = 0,
 		behind: number = 0,
 		detached: boolean = false,
@@ -105,7 +135,7 @@ export class GitBranch implements GitBranchReference {
 			this.name = GitBranch.formatDetached(this.sha!);
 		}
 
-		this.tracking = tracking == null || tracking.length === 0 ? undefined : tracking;
+		this.upstream = upstream?.name == null || upstream.name.length === 0 ? undefined : upstream;
 		this.state = {
 			ahead: ahead,
 			behind: behind,
@@ -167,7 +197,7 @@ export class GitBranch implements GitBranchReference {
 
 	@memoize()
 	getTrackingWithoutRemote(): string | undefined {
-		return this.tracking?.substring(this.tracking.indexOf('/') + 1);
+		return this.upstream?.name.substring(this.upstream.name.indexOf('/') + 1);
 	}
 
 	@memoize()
@@ -184,12 +214,31 @@ export class GitBranch implements GitBranchReference {
 	@memoize()
 	getRemoteName(): string | undefined {
 		if (this.remote) return GitBranch.getRemote(this.name);
-		if (this.tracking != null) return GitBranch.getRemote(this.tracking);
+		if (this.upstream != null) return GitBranch.getRemote(this.upstream.name);
 
 		return undefined;
 	}
 
+	@memoize()
+	async getStatus(): Promise<GitBranchStatus> {
+		if (this.remote) return GitBranchStatus.Remote;
+
+		if (this.upstream != null) {
+			if (this.upstream.missing) return GitBranchStatus.MissingUpstream;
+			if (this.state.ahead && this.state.behind) return GitBranchStatus.Diverged;
+			if (this.state.ahead) return GitBranchStatus.Ahead;
+			if (this.state.behind) return GitBranchStatus.Behind;
+			return GitBranchStatus.UpToDate;
+		}
+
+		const remotes = await Container.git.getRemotes(this.repoPath);
+		if (remotes.length > 0) return GitBranchStatus.Unpublished;
+
+		return GitBranchStatus.Local;
+	}
+
 	getTrackingStatus(options?: {
+		count?: boolean;
 		empty?: string;
 		expand?: boolean;
 		icons?: boolean;
@@ -197,7 +246,7 @@ export class GitBranch implements GitBranchReference {
 		separator?: string;
 		suffix?: string;
 	}): string {
-		return GitStatus.getUpstreamStatus(this.tracking, this.state, options);
+		return GitStatus.getUpstreamStatus(this.upstream, this.state, options);
 	}
 
 	get starred() {

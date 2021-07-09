@@ -1,15 +1,15 @@
 'use strict';
 import { ThemeIcon, TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { BranchesView } from '../branchesView';
-import { BranchNode } from './branchNode';
-import { BranchOrTagFolderNode } from './branchOrTagFolderNode';
-import { MessageNode } from './common';
 import { ViewBranchesLayout } from '../../configuration';
 import { Repository } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { RepositoriesView } from '../repositoriesView';
-import { RepositoryNode } from './repositoryNode';
 import { Arrays, debug, gate } from '../../system';
+import { BranchesView } from '../branchesView';
+import { RepositoriesView } from '../repositoriesView';
+import { BranchNode } from './branchNode';
+import { BranchOrTagFolderNode } from './branchOrTagFolderNode';
+import { MessageNode } from './common';
+import { RepositoryNode } from './repositoryNode';
 import { ContextValues, ViewNode } from './viewNode';
 
 export class BranchesNode extends ViewNode<BranchesView | RepositoriesView> {
@@ -29,7 +29,7 @@ export class BranchesNode extends ViewNode<BranchesView | RepositoriesView> {
 		super(uri, view, parent);
 	}
 
-	get id(): string {
+	override get id(): string {
 		return BranchesNode.getId(this.repo.path);
 	}
 
@@ -86,19 +86,19 @@ export class BranchesNode extends ViewNode<BranchesView | RepositoriesView> {
 
 	async getTreeItem(): Promise<TreeItem> {
 		const item = new TreeItem('Branches', TreeItemCollapsibleState.Collapsed);
+		item.id = this.id;
 		item.contextValue = ContextValues.Branches;
 		if (await this.repo.hasRemotes()) {
 			item.contextValue += '+remotes';
 		}
 		item.iconPath = new ThemeIcon('git-branch');
-		item.id = this.id;
 
 		return item;
 	}
 
 	@gate()
 	@debug()
-	refresh() {
+	override refresh() {
 		this._children = undefined;
 	}
 }

@@ -27,8 +27,8 @@ import {
 	Repository,
 } from '../git/git';
 import { GitUri } from '../git/gitUri';
-import { ResetGitCommandArgs } from './git/reset';
 import { RepositoryPicker } from '../quickpicks';
+import { ResetGitCommandArgs } from './git/reset';
 
 export async function executeGitCommand(args: GitCommandsCommandArgs): Promise<void> {
 	void (await executeCommand<GitCommandsCommandArgs>(Commands.GitCommands, args));
@@ -151,18 +151,18 @@ export namespace GitActions {
 			},
 		) {
 			if (
-				configuration.get('views', 'repositories', 'enabled') &&
-				(Container.repositoriesView.visible ||
-					(branch.remote ? !Container.remotesView.visible : !Container.branchesView.visible))
+				!configuration.get(`views.${branch.remote ? 'remotes' : 'branches'}.reveal` as const) ||
+				(Container.repositoriesView.visible &&
+					!(branch.remote ? Container.remotesView.visible : Container.branchesView.visible))
 			) {
 				return Container.repositoriesView.revealBranch(branch, options);
 			}
 
 			let node;
-			if (!branch.remote) {
-				node = await Container.branchesView.revealBranch(branch, options);
-			} else {
+			if (branch.remote) {
 				node = await Container.remotesView.revealBranch(branch, options);
+			} else {
+				node = await Container.branchesView.revealBranch(branch, options);
 			}
 
 			return node;
@@ -435,7 +435,7 @@ export namespace GitActions {
 				file = f;
 			}
 
-			if (file.status === 'A' || file.status === 'D') return;
+			if (file.status === 'D') return;
 
 			let ref;
 			if (GitLogCommit.is(commitOrRef)) {
@@ -558,7 +558,7 @@ export namespace GitActions {
 
 			const editor = await findOrOpenEditor(uri, opts);
 			if (annotationType != null && editor != null) {
-				void (await Container.fileAnnotations.show(editor, annotationType, line));
+				void (await Container.fileAnnotations.show(editor, annotationType, { selection: { line: line } }));
 			}
 		}
 
@@ -647,8 +647,8 @@ export namespace GitActions {
 			},
 		) {
 			if (
-				configuration.get('views', 'repositories', 'enabled') &&
-				(Container.repositoriesView.visible || !Container.commitsView.visible)
+				!configuration.get('views.commits.reveal') ||
+				(Container.repositoriesView.visible && !Container.commitsView.visible)
 			) {
 				return Container.repositoriesView.revealCommit(commit, options);
 			}
@@ -710,8 +710,8 @@ export namespace GitActions {
 			},
 		) {
 			if (
-				configuration.get('views', 'repositories', 'enabled') &&
-				(Container.repositoriesView.visible || !Container.tagsView.visible)
+				!configuration.get('views.tags.reveal') ||
+				(Container.repositoriesView.visible && !Container.tagsView.visible)
 			) {
 				return Container.repositoriesView.revealTag(tag, options);
 			}
@@ -780,7 +780,7 @@ export namespace GitActions {
 			},
 		) {
 			// if (
-			// 	configuration.get('views', 'repositories', 'enabled') &&
+			// 	configuration.get('views.repositories.enabled') &&
 			// 	(Container.repositoriesView.visible || !Container.remotesView.visible)
 			// ) {
 			// 	return Container.repositoriesView.revealRemote(remote, options);
@@ -835,8 +835,8 @@ export namespace GitActions {
 			},
 		) {
 			if (
-				configuration.get('views', 'repositories', 'enabled') &&
-				(Container.repositoriesView.visible || !Container.stashesView.visible)
+				!configuration.get('views.stashes.reveal') ||
+				(Container.repositoriesView.visible && !Container.stashesView.visible)
 			) {
 				return Container.repositoriesView.revealStash(stash, options);
 			}

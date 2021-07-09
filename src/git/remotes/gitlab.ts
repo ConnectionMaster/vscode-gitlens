@@ -15,7 +15,7 @@ export class GitLabRemote extends RemoteProvider {
 	}
 
 	private _autolinks: (AutolinkReference | DynamicAutolinkReference)[] | undefined;
-	get autolinks(): (AutolinkReference | DynamicAutolinkReference)[] {
+	override get autolinks(): (AutolinkReference | DynamicAutolinkReference)[] {
 		if (this._autolinks === undefined) {
 			this._autolinks = [
 				{
@@ -28,7 +28,7 @@ export class GitLabRemote extends RemoteProvider {
 		return this._autolinks;
 	}
 
-	get icon() {
+	override get icon() {
 		return 'gitlab';
 	}
 
@@ -103,19 +103,19 @@ export class GitLabRemote extends RemoteProvider {
 	}
 
 	protected getUrlForBranches(): string {
-		return `${this.baseUrl}/branches`;
+		return this.encodeUrl(`${this.baseUrl}/branches`);
 	}
 
 	protected getUrlForBranch(branch: string): string {
-		return `${this.baseUrl}/tree/${branch}`;
+		return this.encodeUrl(`${this.baseUrl}/tree/${branch}`);
 	}
 
 	protected getUrlForCommit(sha: string): string {
-		return `${this.baseUrl}/commit/${sha}`;
+		return this.encodeUrl(`${this.baseUrl}/commit/${sha}`);
 	}
 
-	protected getUrlForComparison(ref1: string, ref2: string, notation: '..' | '...'): string {
-		return `${this.baseUrl}/-/compare/${ref1}${notation}${ref2}`;
+	protected override getUrlForComparison(base: string, compare: string, notation: '..' | '...'): string {
+		return this.encodeUrl(`${this.baseUrl}/-/compare/${base}${notation}${compare}`);
 	}
 
 	protected getUrlForFile(fileName: string, branch?: string, sha?: string, range?: Range): string {
@@ -130,8 +130,8 @@ export class GitLabRemote extends RemoteProvider {
 			line = '';
 		}
 
-		if (sha) return `${this.baseUrl}/blob/${sha}/${fileName}${line}`;
-		if (branch) return `${this.baseUrl}/blob/${branch}/${fileName}${line}`;
-		return `${this.baseUrl}?path=${fileName}${line}`;
+		if (sha) return `${this.encodeUrl(`${this.baseUrl}/blob/${sha}/${fileName}`)}${line}`;
+		if (branch) return `${this.encodeUrl(`${this.baseUrl}/blob/${branch}/${fileName}`)}${line}`;
+		return `${this.encodeUrl(`${this.baseUrl}?path=${fileName}`)}${line}`;
 	}
 }

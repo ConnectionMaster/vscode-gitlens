@@ -1,14 +1,14 @@
 'use strict';
 import { TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { MessageNode } from './common';
 import { Container } from '../../container';
 import { Repository } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { RepositoriesView } from '../repositoriesView';
-import { RepositoryNode } from './repositoryNode';
-import { StashesView } from '../stashesView';
-import { StashNode } from './stashNode';
 import { debug, gate, Iterables } from '../../system';
+import { RepositoriesView } from '../repositoriesView';
+import { StashesView } from '../stashesView';
+import { MessageNode } from './common';
+import { RepositoryNode } from './repositoryNode';
+import { StashNode } from './stashNode';
 import { ContextValues, ViewNode } from './viewNode';
 
 export class StashesNode extends ViewNode<StashesView | RepositoriesView> {
@@ -23,7 +23,7 @@ export class StashesNode extends ViewNode<StashesView | RepositoriesView> {
 		super(uri, view, parent);
 	}
 
-	get id(): string {
+	override get id(): string {
 		return StashesNode.getId(this.repo.path);
 	}
 
@@ -53,7 +53,7 @@ export class StashesNode extends ViewNode<StashesView | RepositoriesView> {
 
 	@gate()
 	@debug()
-	refresh() {
+	override refresh() {
 		this._children = undefined;
 	}
 }

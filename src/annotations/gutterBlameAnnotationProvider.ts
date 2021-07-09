@@ -1,17 +1,24 @@
 'use strict';
-import { DecorationOptions, Range, ThemableDecorationAttachmentRenderOptions } from 'vscode';
-import { Annotations } from './annotations';
-import { BlameAnnotationProviderBase } from './blameAnnotationProvider';
+import { DecorationOptions, Range, TextEditor, ThemableDecorationAttachmentRenderOptions } from 'vscode';
 import { FileAnnotationType, GravatarDefaultStyle } from '../configuration';
 import { GlyphChars } from '../constants';
 import { Container } from '../container';
-import { Decorations } from './fileAnnotationController';
 import { CommitFormatOptions, CommitFormatter, GitBlame, GitBlameCommit } from '../git/git';
 import { Logger } from '../logger';
 import { Arrays, Iterables, log, Strings } from '../system';
+import { GitDocumentState } from '../trackers/gitDocumentTracker';
+import { TrackedDocument } from '../trackers/trackedDocument';
+import { AnnotationContext } from './annotationProvider';
+import { Annotations } from './annotations';
+import { BlameAnnotationProviderBase } from './blameAnnotationProvider';
+import { Decorations } from './fileAnnotationController';
 
 export class GutterBlameAnnotationProvider extends BlameAnnotationProviderBase {
-	clear() {
+	constructor(editor: TextEditor, trackedDocument: TrackedDocument<GitDocumentState>) {
+		super(FileAnnotationType.Blame, editor, trackedDocument);
+	}
+
+	override clear() {
 		super.clear();
 
 		if (Decorations.gutterBlameHighlight != null) {
@@ -22,10 +29,10 @@ export class GutterBlameAnnotationProvider extends BlameAnnotationProviderBase {
 	}
 
 	@log()
-	async onProvideAnnotation(_shaOrLine?: string | number, _type?: FileAnnotationType): Promise<boolean> {
+	async onProvideAnnotation(context?: AnnotationContext, _type?: FileAnnotationType): Promise<boolean> {
 		const cc = Logger.getCorrelationContext();
 
-		this.annotationType = FileAnnotationType.Blame;
+		this.annotationContext = context;
 
 		const blame = await this.getBlame();
 		if (blame == null) return false;
@@ -167,8 +174,8 @@ export class GutterBlameAnnotationProvider extends BlameAnnotationProviderBase {
 	}
 
 	@log({ args: false })
-	async selection(shaOrLine?: string | number, blame?: GitBlame) {
-		if (Decorations.gutterBlameHighlight == null) return;
+	async selection(selection?: AnnotationContext['selection'], blame?: GitBlame): Promise<void> {
+		if (selection === false || Decorations.gutterBlameHighlight == null) return;
 
 		if (blame == null) {
 			blame = await this.blame;
@@ -176,11 +183,11 @@ export class GutterBlameAnnotationProvider extends BlameAnnotationProviderBase {
 		}
 
 		let sha: string | undefined = undefined;
-		if (typeof shaOrLine === 'string') {
-			sha = shaOrLine;
-		} else if (typeof shaOrLine === 'number') {
-			if (shaOrLine >= 0) {
-				const commitLine = blame.lines[shaOrLine];
+		if (selection?.sha != null) {
+			sha = selection.sha;
+		} else if (selection?.line != null) {
+			if (selection.line >= 0) {
+				const commitLine = blame.lines[selection.line];
 				sha = commitLine?.sha;
 			}
 		} else {

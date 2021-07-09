@@ -1,5 +1,5 @@
 'use strict';
-import { createHash, HexBase64Latin1Encoding } from 'crypto';
+import { BinaryToTextEncoding, createHash } from 'crypto';
 import { isWindows } from '../git/shell';
 
 const emptyStr = '';
@@ -175,7 +175,6 @@ export function getTokensFromTemplate(template: string) {
 		match = tokenRegex.exec(template);
 		if (match == null) break;
 
-		// eslint-disable-next-line prefer-const
 		let [, prefix, key, truncateTo, option, suffix] = match;
 		// Check for a prefix group
 		if (prefix != null) {
@@ -210,8 +209,7 @@ export function getTokensFromTemplate(template: string) {
 	return tokens;
 }
 
-// eslint-disable-next-line no-template-curly-in-string
-const tokenSanitizeReplacement = "$${$1=this.$1,($1 == null ? '' : $1)}";
+const tokenSanitizeReplacement = `$\${$1=this.$1,($1 == null ? '' : $1)}`;
 const interpolationMap = new Map<string, Function>();
 
 export function interpolate(template: string, context: object | undefined): string {
@@ -233,9 +231,7 @@ const AsyncFunction = Object.getPrototypeOf(async function () {
 	/* noop */
 }).constructor;
 
-const tokenSanitizeReplacementAsync =
-	// eslint-disable-next-line no-template-curly-in-string
-	"$${$1=this.$1,($1 == null ? '' : typeof $1.then === 'function' ? (($1 = await $1),$1 == null ? '' : $1) : $1)}";
+const tokenSanitizeReplacementAsync = `$\${$1=this.$1,($1 == null ? '' : typeof $1.then === 'function' ? (($1 = await $1),$1 == null ? '' : $1) : $1)}`;
 
 const interpolationAsyncMap = new Map<string, typeof AsyncFunction>();
 
@@ -263,10 +259,10 @@ export function isUpperAsciiLetter(code: number): boolean {
 	return code >= CharCode.A && code <= CharCode.Z;
 }
 
-export function* lines(s: string): IterableIterator<string> {
+export function* lines(s: string, char: string = '\n'): IterableIterator<string> {
 	let i = 0;
 	while (i < s.length) {
-		let j = s.indexOf('\n', i);
+		let j = s.indexOf(char, i);
 		if (j === -1) {
 			j = s.length;
 		}
@@ -276,7 +272,7 @@ export function* lines(s: string): IterableIterator<string> {
 	}
 }
 
-export function md5(s: string, encoding: HexBase64Latin1Encoding = 'base64'): string {
+export function md5(s: string, encoding: BinaryToTextEncoding = 'base64'): string {
 	return createHash('md5').update(s).digest(encoding);
 }
 
@@ -367,7 +363,7 @@ export function sanitizeForFileSystem(s: string, replacement: string = '_') {
 	return s.replace(illegalCharsForFSRegex, replacement);
 }
 
-export function sha1(s: string, encoding: HexBase64Latin1Encoding = 'base64'): string {
+export function sha1(s: string, encoding: BinaryToTextEncoding = 'base64'): string {
 	return createHash('sha1').update(s).digest(encoding);
 }
 
@@ -438,12 +434,13 @@ export function truncateMiddle(s: string, truncateTo: number, ellipsis: string =
 	return `${s.slice(0, Math.floor(truncateTo / 2) - 1)}${ellipsis}${s.slice(width - Math.ceil(truncateTo / 2))}`;
 }
 
-// Lifted from https://github.com/chalk/ansi-regex
-// eslint-disable-next-line no-control-regex
-const ansiRegex = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;
+// See chalk/ansi-regex
+const ansiRegex =
+	// eslint-disable-next-line no-control-regex
+	/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;
 const containsNonAsciiRegex = /[^\x20-\x7F\u00a0\u2026]/;
 
-// Originally from https://github.com/sindresorhus/string-width
+// See sindresorhus/string-width
 export function getWidth(s: string): number {
 	if (s == null || s.length === 0) return 0;
 
@@ -466,7 +463,6 @@ export function getWidth(s: string): number {
 		// Ignore combining characters
 		if (code >= 0x300 && code <= 0x36f) continue;
 
-		// https://stackoverflow.com/questions/30757193/find-out-if-character-in-string-is-emoji
 		if (
 			(code >= 0x1f600 && code <= 0x1f64f) || // Emoticons
 			(code >= 0x1f300 && code <= 0x1f5ff) || // Misc Symbols and Pictographs
@@ -507,7 +503,7 @@ export function getWidth(s: string): number {
 	return count;
 }
 
-// Originally from https://github.com/sindresorhus/is-fullwidth-code-point
+// See sindresorhus/is-fullwidth-code-point
 function isFullwidthCodePoint(cp: number) {
 	// code points are derived from:
 	// http://www.unix.org/Public/UNIDATA/EastAsianWidth.txt

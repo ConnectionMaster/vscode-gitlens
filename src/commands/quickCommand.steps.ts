@@ -1,10 +1,10 @@
 'use strict';
 import { QuickInputButton, QuickPick } from 'vscode';
-import { Commands } from './common';
 import { BranchSorting, configuration, TagSorting } from '../configuration';
-import { Container } from '../container';
 import { GlyphChars, quickPickTitleMaxChars } from '../constants';
+import { Container } from '../container';
 import {
+	BranchSortOptions,
 	GitBranch,
 	GitBranchReference,
 	GitContributor,
@@ -23,19 +23,10 @@ import {
 	RemoteResourceType,
 	Repository,
 	SearchPattern,
+	TagSortOptions,
 } from '../git/git';
 import { GitService } from '../git/gitService';
-import {
-	AsyncStepResultGenerator,
-	PartialStepState,
-	QuickCommand,
-	QuickCommandButtons,
-	QuickPickStep,
-	StepResult,
-	StepResultGenerator,
-	StepSelection,
-	StepState,
-} from './quickCommand';
+import { GitUri } from '../git/gitUri';
 import {
 	BranchQuickPickItem,
 	CommandQuickPickItem,
@@ -76,12 +67,23 @@ import {
 	TagQuickPickItem,
 } from '../quickpicks';
 import { Arrays, Iterables, Strings } from '../system';
-import { GitUri } from '../git/gitUri';
+import { Commands } from './common';
 import { GitActions } from './gitCommands.actions';
+import {
+	AsyncStepResultGenerator,
+	PartialStepState,
+	QuickCommand,
+	QuickCommandButtons,
+	QuickPickStep,
+	StepResult,
+	StepResultGenerator,
+	StepSelection,
+	StepState,
+} from './quickCommand';
 
 export function appendReposToTitle<
 	State extends { repo: Repository } | { repos: Repository[] },
-	Context extends { repos: Repository[] }
+	Context extends { repos: Repository[] },
 >(title: string, state: State, context: Context, additionalContext?: string) {
 	if (context.repos.length === 1) {
 		return `${title}${Strings.truncate(additionalContext ?? '', quickPickTitleMaxChars - title.length)}`;
@@ -107,16 +109,24 @@ export function appendReposToTitle<
 
 export async function getBranches(
 	repos: Repository | Repository[],
-	options: { filterBranches?: (b: GitBranch) => boolean; picked?: string | string[] } = {},
+	options: { filter?: (b: GitBranch) => boolean; picked?: string | string[]; sort?: BranchSortOptions } = {},
 ): Promise<BranchQuickPickItem[]> {
-	return getBranchesAndOrTags(repos, ['branches'], { sort: true, ...options }) as Promise<BranchQuickPickItem[]>;
+	return getBranchesAndOrTags(repos, ['branches'], {
+		filter: options?.filter != null ? { branches: options.filter } : undefined,
+		picked: options?.picked,
+		sort: options?.sort != null ? { branches: options.sort } : true,
+	}) as Promise<BranchQuickPickItem[]>;
 }
 
 export async function getTags(
 	repos: Repository | Repository[],
-	options: { filterTags?: (t: GitTag) => boolean; picked?: string | string[] } = {},
+	options?: { filter?: (t: GitTag) => boolean; picked?: string | string[]; sort?: TagSortOptions },
 ): Promise<TagQuickPickItem[]> {
-	return getBranchesAndOrTags(repos, ['tags'], { sort: true, ...options }) as Promise<TagQuickPickItem[]>;
+	return getBranchesAndOrTags(repos, ['tags'], {
+		filter: options?.filter != null ? { tags: options.filter } : undefined,
+		picked: options?.picked,
+		sort: options?.sort != null ? { tags: options.sort } : true,
+	}) as Promise<TagQuickPickItem[]>;
 }
 
 export async function getBranchesAndOrTags(
@@ -129,7 +139,7 @@ export async function getBranchesAndOrTags(
 	}: {
 		filter?: { branches?: (b: GitBranch) => boolean; tags?: (t: GitTag) => boolean };
 		picked?: string | string[];
-		sort?: boolean | { branches?: { current?: boolean; orderBy?: BranchSorting }; tags?: { orderBy?: TagSorting } };
+		sort?: boolean | { branches?: BranchSortOptions; tags?: TagSortOptions };
 	} = {},
 ): Promise<(BranchQuickPickItem | TagQuickPickItem)[]> {
 	let branches: GitBranch[] | undefined;
@@ -309,7 +319,7 @@ export function getValidateGitReferenceFn(repos: Repository | Repository[], opti
 
 export async function* inputBranchNameStep<
 	State extends PartialStepState & ({ repo: Repository } | { repos: Repository[] }),
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
@@ -344,7 +354,7 @@ export async function* inputBranchNameStep<
 
 export async function* inputTagNameStep<
 	State extends PartialStepState & ({ repo: Repository } | { repos: Repository[] }),
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
@@ -379,24 +389,24 @@ export async function* inputTagNameStep<
 
 export async function* pickBranchStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
 	{
-		filterBranches,
+		filter,
 		picked,
 		placeholder,
 		titleContext,
 	}: {
-		filterBranches?: (b: GitBranch) => boolean;
+		filter?: (b: GitBranch) => boolean;
 		picked?: string | string[];
 		placeholder: string;
 		titleContext?: string;
 	},
 ): AsyncStepResultGenerator<GitBranchReference> {
 	const branches = await getBranches(state.repo, {
-		filterBranches: filterBranches,
+		filter: filter,
 		picked: picked,
 	});
 
@@ -443,25 +453,28 @@ export async function* pickBranchStep<
 
 export async function* pickBranchesStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
 	{
-		filterBranches,
+		filter,
 		picked,
 		placeholder,
+		sort,
 		titleContext,
 	}: {
-		filterBranches?: (b: GitBranch) => boolean;
+		filter?: (b: GitBranch) => boolean;
 		picked?: string | string[];
 		placeholder: string;
+		sort?: BranchSortOptions;
 		titleContext?: string;
 	},
 ): AsyncStepResultGenerator<GitBranchReference[]> {
 	const branches = await getBranches(state.repo, {
-		filterBranches: filterBranches,
+		filter: filter,
 		picked: picked,
+		sort: sort,
 	});
 
 	const step = QuickCommand.createPickStep<BranchQuickPickItem>({
@@ -508,7 +521,7 @@ export async function* pickBranchesStep<
 
 export async function* pickBranchOrTagStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
@@ -625,7 +638,7 @@ export async function* pickBranchOrTagStep<
 
 export async function* pickBranchOrTagStepMultiRepo<
 	State extends StepState & { repos: Repository[]; reference?: GitReference },
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
@@ -740,7 +753,7 @@ export async function* pickBranchOrTagStepMultiRepo<
 
 export async function* pickCommitStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
@@ -792,7 +805,7 @@ export async function* pickCommitStep<
 		value: typeof picked === 'string' && log?.count === 0 ? picked : undefined,
 		items: showInSideBarCommand != null ? [showInSideBarCommand, ...getItems(log)] : getItems(log),
 		onDidLoadMore: async quickpick => {
-			log = await log?.more?.(configuration.get('advanced', 'maxListItems'));
+			log = await log?.more?.(configuration.get('advanced.maxListItems'));
 			onDidLoadMore?.(log);
 			if (typeof placeholder !== 'string') {
 				quickpick.placeholder = placeholder(context, log);
@@ -893,7 +906,7 @@ export async function* pickCommitStep<
 
 export function* pickCommitsStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
@@ -936,7 +949,7 @@ export function* pickCommitsStep<
 		matchOnDetail: true,
 		items: getItems(log),
 		onDidLoadMore: async quickpick => {
-			log = await log?.more?.(configuration.get('advanced', 'maxListItems'));
+			log = await log?.more?.(configuration.get('advanced.maxListItems'));
 			onDidLoadMore?.(log);
 			if (typeof placeholder !== 'string') {
 				quickpick.placeholder = placeholder(context, log);
@@ -1011,7 +1024,7 @@ export function* pickCommitsStep<
 
 export async function* pickContributorsStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
@@ -1035,7 +1048,7 @@ export async function* pickContributorsStep<
 
 export async function* pickRepositoryStep<
 	State extends PartialStepState & { repo?: string | Repository },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(state: State, context: Context, placeholder: string = 'Choose a repository'): AsyncStepResultGenerator<Repository> {
 	if (typeof state.repo === 'string') {
 		state.repo = await Container.git.getRepository(state.repo);
@@ -1086,7 +1099,7 @@ export async function* pickRepositoryStep<
 
 export async function* pickRepositoriesStep<
 	State extends PartialStepState & { repos?: string[] | Repository[] },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
@@ -1157,7 +1170,7 @@ export async function* pickRepositoriesStep<
 
 export function* pickStashStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
@@ -1249,24 +1262,24 @@ export function* pickStashStep<
 
 export async function* pickTagsStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; showTags?: boolean; title: string }
+	Context extends { repos: Repository[]; showTags?: boolean; title: string },
 >(
 	state: State,
 	context: Context,
 	{
-		filterTags,
+		filter,
 		picked,
 		placeholder,
 		titleContext,
 	}: {
-		filterTags?: (b: GitTag) => boolean;
+		filter?: (b: GitTag) => boolean;
 		picked?: string | string[];
 		placeholder: string;
 		titleContext?: string;
 	},
 ): AsyncStepResultGenerator<GitTagReference[]> {
 	const tags = await getTags(state.repo, {
-		filterTags: filterTags,
+		filter: filter,
 		picked: picked,
 	});
 
@@ -1314,75 +1327,74 @@ export async function* pickTagsStep<
 
 export async function* showCommitOrStashStep<
 	State extends PartialStepState & { repo: Repository; reference: GitLogCommit | GitStashCommit },
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
 ): AsyncStepResultGenerator<CommitFilesQuickPickItem | GitCommandQuickPickItem | CommandQuickPickItem> {
-	const step: QuickPickStep<
-		CommitFilesQuickPickItem | GitCommandQuickPickItem | CommandQuickPickItem
-	> = QuickCommand.createPickStep({
-		title: appendReposToTitle(
-			GitReference.toString(state.reference, {
-				capitalize: true,
-				icon: false,
-			}),
-			state,
-			context,
-		),
-		placeholder: GitReference.toString(state.reference, { capitalize: true, icon: false }),
-		ignoreFocusOut: true,
-		items: await getShowCommitOrStashStepItems(state),
-		additionalButtons: GitReference.isStash(state.reference)
-			? [QuickCommandButtons.RevealInSideBar]
-			: [QuickCommandButtons.RevealInSideBar, QuickCommandButtons.SearchInSideBar],
-		onDidClickButton: (quickpick, button) => {
-			if (button === QuickCommandButtons.SearchInSideBar) {
-				void Container.searchAndCompareView.search(
-					state.repo.path,
-					{ pattern: SearchPattern.fromCommit(state.reference.ref) },
-					{
-						label: { label: `for ${GitReference.toString(state.reference, { icon: false })}` },
-						reveal: {
+	const step: QuickPickStep<CommitFilesQuickPickItem | GitCommandQuickPickItem | CommandQuickPickItem> =
+		QuickCommand.createPickStep({
+			title: appendReposToTitle(
+				GitReference.toString(state.reference, {
+					capitalize: true,
+					icon: false,
+				}),
+				state,
+				context,
+			),
+			placeholder: GitReference.toString(state.reference, { capitalize: true, icon: false }),
+			ignoreFocusOut: true,
+			items: await getShowCommitOrStashStepItems(state),
+			additionalButtons: GitReference.isStash(state.reference)
+				? [QuickCommandButtons.RevealInSideBar]
+				: [QuickCommandButtons.RevealInSideBar, QuickCommandButtons.SearchInSideBar],
+			onDidClickButton: (quickpick, button) => {
+				if (button === QuickCommandButtons.SearchInSideBar) {
+					void Container.searchAndCompareView.search(
+						state.repo.path,
+						{ pattern: SearchPattern.fromCommit(state.reference.ref) },
+						{
+							label: { label: `for ${GitReference.toString(state.reference, { icon: false })}` },
+							reveal: {
+								select: true,
+								focus: false,
+								expand: true,
+							},
+						},
+					);
+
+					return;
+				}
+
+				if (button === QuickCommandButtons.RevealInSideBar) {
+					if (GitReference.isStash(state.reference)) {
+						void GitActions.Stash.reveal(state.reference, {
 							select: true,
 							focus: false,
 							expand: true,
-						},
-					},
-				);
-
-				return;
-			}
-
-			if (button === QuickCommandButtons.RevealInSideBar) {
-				if (GitReference.isStash(state.reference)) {
-					void GitActions.Stash.reveal(state.reference, {
-						select: true,
-						focus: false,
-						expand: true,
-					});
-				} else {
-					void GitActions.Commit.reveal(state.reference, {
-						select: true,
-						focus: false,
-						expand: true,
-					});
+						});
+					} else {
+						void GitActions.Commit.reveal(state.reference, {
+							select: true,
+							focus: false,
+							expand: true,
+						});
+					}
 				}
-			}
-		},
-		keys: ['right', 'alt+right', 'ctrl+right'],
-		onDidPressKey: async (quickpick, key) => {
-			if (quickpick.activeItems.length === 0) return;
+			},
+			keys: ['right', 'alt+right', 'ctrl+right'],
+			onDidPressKey: async (quickpick, key) => {
+				if (quickpick.activeItems.length === 0) return;
 
-			void (await quickpick.activeItems[0].onDidPressKey(key));
-		},
-	});
+				void (await quickpick.activeItems[0].onDidPressKey(key));
+			},
+		});
 	const selection: StepSelection<typeof step> = yield step;
 	return QuickCommand.canPickStepContinue(step, state, selection) ? selection[0] : StepResult.Break;
 }
 
 async function getShowCommitOrStashStepItems<
-	State extends PartialStepState & { repo: Repository; reference: GitLogCommit | GitStashCommit }
+	State extends PartialStepState & { repo: Repository; reference: GitLogCommit | GitStashCommit },
 >(state: State) {
 	const items: CommandQuickPickItem[] = [new CommitFilesQuickPickItem(state.reference)];
 
@@ -1566,7 +1578,7 @@ export function* showCommitOrStashFilesStep<
 		reference: GitLogCommit | GitStashCommit;
 		fileName?: string | undefined;
 	},
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(
 	state: State,
 	context: Context,
@@ -1642,7 +1654,7 @@ export async function* showCommitOrStashFileStep<
 		reference: GitLogCommit | GitStashCommit;
 		fileName: string;
 	},
-	Context extends { repos: Repository[]; title: string }
+	Context extends { repos: Repository[]; title: string },
 >(state: State, context: Context): AsyncStepResultGenerator<CommandQuickPickItem> {
 	const step: QuickPickStep<CommandQuickPickItem> = QuickCommand.createPickStep<CommandQuickPickItem>({
 		title: appendReposToTitle(
@@ -1713,7 +1725,7 @@ async function getShowCommitOrStashFileStepItems<
 		repo: Repository;
 		reference: GitLogCommit | GitStashCommit;
 		fileName: string;
-	}
+	},
 >(state: State) {
 	const file = state.reference.files.find(f => f.fileName === state.fileName);
 	if (file == null) return [];
@@ -1806,7 +1818,7 @@ async function getShowCommitOrStashFileStepItems<
 
 export function* showRepositoryStatusStep<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; title: string; status: GitStatus }
+	Context extends { repos: Repository[]; title: string; status: GitStatus },
 >(state: State, context: Context): StepResultGenerator<CommandQuickPickItem> {
 	const upstream = context.status.getUpstreamStatus({ expand: true, separator: ', ' });
 	const working = context.status.getFormattedDiffStatus({ expand: true, separator: ', ' });
@@ -1828,7 +1840,7 @@ export function* showRepositoryStatusStep<
 
 function getShowRepositoryStatusStepItems<
 	State extends PartialStepState & { repo: Repository },
-	Context extends { repos: Repository[]; title: string; status: GitStatus }
+	Context extends { repos: Repository[]; title: string; status: GitStatus },
 >(state: State, context: Context) {
 	const items: (DirectiveQuickPickItem | CommandQuickPickItem)[] = [];
 

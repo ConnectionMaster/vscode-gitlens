@@ -1,7 +1,7 @@
 'use strict';
-import { command, Command, CommandContext, Commands } from './common';
 import { ContextKeys, setContext, SyncedState } from '../constants';
 import { Container } from '../container';
+import { command, Command, CommandContext, Commands } from './common';
 
 @command()
 export class CloseViewCommand extends Command {
@@ -9,7 +9,7 @@ export class CloseViewCommand extends Command {
 		super([Commands.CloseWelcomeView, Commands.CloseUpdatesView]);
 	}
 
-	protected preExecute(context: CommandContext) {
+	protected override preExecute(context: CommandContext) {
 		return this.execute(context.command as Commands);
 	}
 

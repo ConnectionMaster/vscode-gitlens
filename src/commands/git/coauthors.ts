@@ -3,6 +3,7 @@ import { commands } from 'vscode';
 import { Container } from '../../container';
 import { GitContributor, Repository } from '../../git/git';
 import { GitService } from '../../git/gitService';
+import { Strings } from '../../system';
 import {
 	PartialStepState,
 	pickContributorsStep,
@@ -12,7 +13,6 @@ import {
 	StepResult,
 	StepState,
 } from '../quickCommand';
-import { Strings } from '../../system';
 
 interface Context {
 	repos: Repository[];
@@ -55,7 +55,7 @@ export class CoAuthorsGitCommand extends QuickCommand<State> {
 		};
 	}
 
-	get canConfirm() {
+	override get canConfirm() {
 		return false;
 	}
 

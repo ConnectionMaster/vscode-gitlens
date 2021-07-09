@@ -2,8 +2,9 @@
 import { ThemeIcon, TreeItem, TreeItemCollapsibleState } from 'vscode';
 import { ViewFilesLayout, ViewsFilesConfig } from '../../configuration';
 import { GitUri } from '../../git/gitUri';
-import { StashesView } from '../stashesView';
 import { Arrays } from '../../system';
+import { FileHistoryView } from '../fileHistoryView';
+import { StashesView } from '../stashesView';
 import { ViewsWithCommits } from '../viewBase';
 import { ContextValues, ViewNode } from './viewNode';
 
@@ -15,11 +16,11 @@ export interface FileNode extends ViewNode {
 	root?: Arrays.HierarchicalItem<FileNode>;
 }
 
-export class FolderNode extends ViewNode<ViewsWithCommits | StashesView> {
+export class FolderNode extends ViewNode<ViewsWithCommits | FileHistoryView | StashesView> {
 	readonly priority: number = 1;
 
 	constructor(
-		view: ViewsWithCommits | StashesView,
+		view: ViewsWithCommits | FileHistoryView | StashesView,
 		parent: ViewNode,
 		public readonly repoPath: string,
 		public readonly folderName: string,
@@ -30,7 +31,7 @@ export class FolderNode extends ViewNode<ViewsWithCommits | StashesView> {
 		super(GitUri.fromRepoPath(repoPath), view, parent);
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		return this.folderName;
 	}
 

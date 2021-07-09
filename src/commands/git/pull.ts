@@ -1,6 +1,9 @@
 'use strict';
+import { GlyphChars } from '../../constants';
 import { Container } from '../../container';
 import { GitBranch, GitBranchReference, GitReference, Repository } from '../../git/git';
+import { Directive, DirectiveQuickPickItem, FlagsQuickPickItem } from '../../quickpicks';
+import { Arrays, Dates, Strings } from '../../system';
 import {
 	appendReposToTitle,
 	AsyncStepResultGenerator,
@@ -14,9 +17,6 @@ import {
 	StepSelection,
 	StepState,
 } from '../quickCommand';
-import { Directive, DirectiveQuickPickItem, FlagsQuickPickItem } from '../../quickpicks';
-import { Arrays, Dates, Strings } from '../../system';
-import { GlyphChars } from '../../constants';
 
 interface Context {
 	repos: Repository[];
@@ -165,7 +165,7 @@ export class PullGitCommand extends QuickCommand<State> {
 				const [repo] = state.repos;
 				const branch = await repo.getBranch(state.reference.name);
 
-				if (branch?.tracking == null) {
+				if (branch?.upstream == null) {
 					step = this.createConfirmStep(
 						appendReposToTitle(`Confirm ${context.title}`, state, context),
 						[],

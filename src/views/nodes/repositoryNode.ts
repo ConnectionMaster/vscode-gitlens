@@ -15,11 +15,11 @@ import {
 import { GitUri } from '../../git/gitUri';
 import { Arrays, debug, Functions, gate, log, Strings } from '../../system';
 import { RepositoriesView } from '../repositoriesView';
-import { CompareBranchNode } from './compareBranchNode';
 import { BranchesNode } from './branchesNode';
 import { BranchNode } from './branchNode';
 import { BranchTrackingStatusNode } from './branchTrackingStatusNode';
 import { MessageNode } from './common';
+import { CompareBranchNode } from './compareBranchNode';
 import { ContributorsNode } from './contributorsNode';
 import { MergeStatusNode } from './mergeStatusNode';
 import { RebaseStatusNode } from './rebaseStatusNode';
@@ -45,11 +45,11 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 		this._status = this.repo.getStatus();
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		return this.repo.path;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return RepositoryNode.getId(this.repo.path);
 	}
 
@@ -66,7 +66,7 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 					true,
 					undefined,
 					status.sha,
-					status.upstream,
+					status.upstream ? { name: status.upstream, missing: false } : undefined,
 					status.state.ahead,
 					status.state.behind,
 					status.detached,
@@ -257,6 +257,7 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 		}
 
 		const item = new TreeItem(label, TreeItemCollapsibleState.Expanded);
+		item.id = this.id;
 		item.contextValue = contextValue;
 		item.description = `${description ?? ''}${
 			lastFetched
@@ -267,7 +268,6 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 			dark: Container.context.asAbsolutePath(`images/dark/icon-repo${iconSuffix}.svg`),
 			light: Container.context.asAbsolutePath(`images/light/icon-repo${iconSuffix}.svg`),
 		};
-		item.id = this.id;
 		item.tooltip = new MarkdownString(tooltip, true);
 
 		return item;
@@ -290,7 +290,7 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 
 	@gate()
 	@debug()
-	async refresh(reset: boolean = false) {
+	override async refresh(reset: boolean = false) {
 		if (reset) {
 			this._status = this.repo.getStatus();
 
@@ -346,7 +346,7 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 		return Disposable.from(...disposables);
 	}
 
-	protected get requiresResetOnVisible(): boolean {
+	protected override get requiresResetOnVisible(): boolean {
 		return this._repoUpdatedAt !== this.repo.updatedAt;
 	}
 
@@ -421,7 +421,7 @@ export class RepositoryNode extends SubscribeableViewNode<RepositoriesView> {
 			return;
 		}
 
-		if (e.changed(RepositoryChange.Remotes, RepositoryChangeComparisonMode.Any)) {
+		if (e.changed(RepositoryChange.Remotes, RepositoryChange.RemoteProviders, RepositoryChangeComparisonMode.Any)) {
 			const node = this._children.find(c => c instanceof RemotesNode);
 			if (node != null) {
 				void this.view.triggerNodeChange(node);

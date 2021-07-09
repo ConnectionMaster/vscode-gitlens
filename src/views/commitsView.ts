@@ -4,7 +4,6 @@ import {
 	commands,
 	ConfigurationChangeEvent,
 	Disposable,
-	MarkdownString,
 	ProgressLocation,
 	TreeItem,
 	TreeItemCollapsibleState,
@@ -16,7 +15,6 @@ import { Container } from '../container';
 import {
 	GitLogCommit,
 	GitReference,
-	GitRemote,
 	GitRevisionReference,
 	Repository,
 	RepositoryChange,
@@ -24,16 +22,15 @@ import {
 	RepositoryChangeEvent,
 } from '../git/git';
 import { GitUri } from '../git/gitUri';
+import { debug, Functions, gate, Strings } from '../system';
 import {
 	BranchNode,
 	BranchTrackingStatusNode,
-	ContextValues,
 	RepositoryFolderNode,
 	RepositoryNode,
 	unknownGitUri,
 	ViewNode,
 } from './nodes';
-import { debug, Functions, gate, Strings } from '../system';
 import { ViewBase } from './viewBase';
 
 export class CommitsRepositoryNode extends RepositoryFolderNode<CommitsView, BranchNode> {
@@ -58,6 +55,7 @@ export class CommitsRepositoryNode extends RepositoryFolderNode<CommitsView, Bra
 
 			this.child = new BranchNode(this.uri, this.view, this, branch, true, {
 				expanded: true,
+				limitCommits: !this.splatted,
 				showComparison: this.view.config.showBranchComparison,
 				showCurrent: false,
 				showTracking: true,
@@ -68,82 +66,9 @@ export class CommitsRepositoryNode extends RepositoryFolderNode<CommitsView, Bra
 		return this.child.getChildren();
 	}
 
-	async getTreeItem(): Promise<TreeItem> {
-		this.splatted = false;
-
-		let expand = this.repo.starred;
-		const [active, branch] = await Promise.all([
-			expand ? undefined : Container.git.isActiveRepoPath(this.uri.repoPath),
-			this.repo.getBranch(),
-		]);
-		if (!expand && (active || (branch?.state.ahead ?? 0) > 0 || (branch?.state.behind ?? 0) > 0)) {
-			expand = true;
-		}
-
-		const item = new TreeItem(
-			this.repo.formattedName ?? this.uri.repoPath ?? '',
-			expand ? TreeItemCollapsibleState.Expanded : TreeItemCollapsibleState.Collapsed,
-		);
-		item.contextValue = `${ContextValues.RepositoryFolder}${this.repo.starred ? '+starred' : ''}`;
-
-		if (branch != null) {
-			const lastFetched = (await this.repo.getLastFetched()) ?? 0;
-
-			const status = branch?.getTrackingStatus();
-			item.description = `${this.repo.supportsChangeEvents ? '' : Strings.pad(GlyphChars.Warning, 1, 2)}${
-				status ? `${status}${Strings.pad(GlyphChars.Dot, 1, 1)}` : ''
-			}${branch.name}${
-				lastFetched
-					? `${Strings.pad(GlyphChars.Dot, 1, 1)}Last fetched ${Repository.formatLastFetched(lastFetched)}`
-					: ''
-			}`;
-
-			let providerName;
-			if (branch.tracking != null) {
-				const providers = GitRemote.getHighlanderProviders(await Container.git.getRemotes(branch.repoPath));
-				providerName = providers?.length ? providers[0].name : undefined;
-			} else {
-				const remote = await branch.getRemote();
-				providerName = remote?.provider?.name;
-			}
-
-			item.tooltip = new MarkdownString(
-				`${this.repo.formattedName ?? this.uri.repoPath ?? ''}${
-					lastFetched
-						? `${Strings.pad(GlyphChars.Dash, 2, 2)}Last fetched ${Repository.formatLastFetched(
-								lastFetched,
-								false,
-						  )}`
-						: ''
-				}${this.repo.formattedName ? `\n${this.uri.repoPath}` : ''}\n\nCurrent branch $(git-branch) ${
-					branch.name
-				}${
-					branch.tracking
-						? ` is ${branch.getTrackingStatus({
-								empty: `up to date with $(git-branch) ${branch.tracking}${
-									providerName ? ` on ${providerName}` : ''
-								}`,
-								expand: true,
-								icons: true,
-								separator: ', ',
-								suffix: ` $(git-branch) ${branch.tracking}${providerName ? ` on ${providerName}` : ''}`,
-						  })}`
-						: `hasn't been published to ${providerName ?? 'a remote'}`
-				}${
-					this.repo.supportsChangeEvents
-						? ''
-						: `\n\n${GlyphChars.Warning} Unable to automatically detect repository changes`
-				}`,
-				true,
-			);
-		}
-
-		return item;
-	}
-
 	@gate()
 	@debug()
-	async refresh(reset: boolean = false) {
+	override async refresh(reset: boolean = false) {
 		if (reset) {
 			this.child = undefined;
 		} else {
@@ -154,7 +79,7 @@ export class CommitsRepositoryNode extends RepositoryFolderNode<CommitsView, Bra
 	}
 
 	@debug()
-	protected async subscribe() {
+	protected override async subscribe() {
 		const lastFetched = (await this.repo?.getLastFetched()) ?? 0;
 
 		const interval = Repository.getLastFetchedUpdateInterval(lastFetched);
@@ -185,6 +110,7 @@ export class CommitsRepositoryNode extends RepositoryFolderNode<CommitsView, Bra
 			RepositoryChange.Heads,
 			RepositoryChange.Index,
 			RepositoryChange.Remotes,
+			RepositoryChange.RemoteProviders,
 			RepositoryChange.Status,
 			RepositoryChange.Unknown,
 			RepositoryChangeComparisonMode.Any,
@@ -193,7 +119,7 @@ export class CommitsRepositoryNode extends RepositoryFolderNode<CommitsView, Bra
 }
 
 export class CommitsViewNode extends ViewNode<CommitsView> {
-	protected splatted = true;
+	protected override splatted = true;
 	private children: CommitsRepositoryNode[] | undefined;
 
 	constructor(view: CommitsView) {
@@ -213,7 +139,10 @@ export class CommitsViewNode extends ViewNode<CommitsView> {
 
 			const splat = repositories.length === 1;
 			this.children = repositories.map(
-				r => new CommitsRepositoryNode(GitUri.fromRepoPath(r.path), this.view, this, r, splat),
+				r =>
+					new CommitsRepositoryNode(GitUri.fromRepoPath(r.path), this.view, this, r, splat, {
+						showBranchAndLastFetched: true,
+					}),
 			);
 		}
 
@@ -249,7 +178,7 @@ export class CommitsViewNode extends ViewNode<CommitsView> {
 		return item;
 	}
 
-	async getSplattedChild() {
+	override async getSplattedChild() {
 		if (this.children == null) {
 			await this.getChildren();
 		}
@@ -259,7 +188,7 @@ export class CommitsViewNode extends ViewNode<CommitsView> {
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		if (reset && this.children != null) {
 			for (const child of this.children) {
 				child.dispose();
@@ -354,7 +283,7 @@ export class CommitsView extends ViewBase<CommitsViewNode, CommitsViewConfig> {
 		);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -443,7 +372,7 @@ export class CommitsView extends ViewBase<CommitsViewNode, CommitsViewConfig> {
 	}
 
 	private setFilesLayout(layout: ViewFilesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'files', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.files.layout` as const, layout);
 	}
 
 	private setMyCommitsOnly(enabled: boolean) {
@@ -453,20 +382,18 @@ export class CommitsView extends ViewBase<CommitsViewNode, CommitsViewConfig> {
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
 	}
 
 	private setShowBranchComparison(enabled: boolean) {
 		return configuration.updateEffective(
-			'views',
-			this.configKey,
-			'showBranchComparison',
+			`views.${this.configKey}.showBranchComparison` as const,
 			enabled ? ViewShowBranchComparison.Working : false,
 		);
 	}
 
 	private async setShowBranchPullRequest(enabled: boolean) {
-		await configuration.updateEffective('views', this.configKey, 'pullRequests', 'showForBranches', enabled);
-		await configuration.updateEffective('views', this.configKey, 'pullRequests', 'enabled', enabled);
+		await configuration.updateEffective(`views.${this.configKey}.pullRequests.showForBranches` as const, enabled);
+		await configuration.updateEffective(`views.${this.configKey}.pullRequests.enabled` as const, enabled);
 	}
 }

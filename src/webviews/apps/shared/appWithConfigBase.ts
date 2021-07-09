@@ -9,9 +9,9 @@ import {
 	PreviewConfigurationCommandType,
 	UpdateConfigurationCommandType,
 } from '../../protocol';
+import { getDateFormatter } from '../shared/date';
 import { App } from './appBase';
 import { DOM } from './dom';
-import { getDateFormatter } from '../shared/date';
 
 const dateFormatter = getDateFormatter(new Date('Wed Jul 25 2018 19:18:00 GMT-0400'));
 
@@ -34,11 +34,11 @@ export abstract class AppWithConfig<TState extends AppStateWithConfig> extends A
 		super(appName, state);
 	}
 
-	protected onInitialized() {
+	protected override onInitialized() {
 		this.updateState();
 	}
 
-	protected onBind() {
+	protected override onBind() {
 		const disposables = super.onBind?.() ?? [];
 
 		// eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -80,7 +80,7 @@ export abstract class AppWithConfig<TState extends AppStateWithConfig> extends A
 		return disposables;
 	}
 
-	protected onMessageReceived(e: MessageEvent) {
+	protected override onMessageReceived(e: MessageEvent) {
 		const msg = e.data as IpcMessage;
 
 		switch (msg.method) {

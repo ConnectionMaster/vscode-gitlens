@@ -6,19 +6,18 @@ import {
 	env,
 	Event,
 	EventEmitter,
-	MessageItem,
 	Range,
 	Uri,
-	window,
 } from 'vscode';
 import { DynamicAutolinkReference } from '../../annotations/autolinks';
 import { AutolinkReference } from '../../config';
-import { SyncedState, WorkspaceState } from '../../constants';
+import { WorkspaceState } from '../../constants';
 import { Container } from '../../container';
-import { setKeysForSync } from '../../extension';
 import { Logger } from '../../logger';
+import { debug, gate, log, Promises } from '../../system';
 import {
 	Account,
+	DefaultBranch,
 	GitLogCommit,
 	IssueOrPullRequest,
 	PullRequest,
@@ -26,13 +25,13 @@ import {
 	RemoteProviderReference,
 	Repository,
 } from '../models/models';
-import { debug, gate, log, Promises } from '../../system';
 
 export enum RemoteResourceType {
 	Branch = 'branch',
 	Branches = 'branches',
 	Commit = 'commit',
 	Comparison = 'comparison',
+	CreatePullRequest = 'createPullRequest',
 	File = 'file',
 	Repo = 'repo',
 	Revision = 'revision',
@@ -52,9 +51,20 @@ export type RemoteResource =
 	  }
 	| {
 			type: RemoteResourceType.Comparison;
-			ref1: string;
-			ref2: string;
+			base: string;
+			compare: string;
 			notation?: '..' | '...';
+	  }
+	| {
+			type: RemoteResourceType.CreatePullRequest;
+			base: {
+				branch?: string;
+				remote: { path: string; url: string };
+			};
+			compare: {
+				branch: string;
+				remote: { path: string; url: string };
+			};
 	  }
 	| {
 			type: RemoteResourceType.File;
@@ -84,6 +94,8 @@ export function getNameFromRemoteResource(resource: RemoteResource) {
 			return 'Commit';
 		case RemoteResourceType.Comparison:
 			return 'Comparison';
+		case RemoteResourceType.CreatePullRequest:
+			return 'Create Pull Request';
 		case RemoteResourceType.File:
 			return 'File';
 		case RemoteResourceType.Repo:
@@ -148,34 +160,32 @@ export abstract class RemoteProvider implements RemoteProviderReference {
 	url(resource: RemoteResource): string | undefined {
 		switch (resource.type) {
 			case RemoteResourceType.Branch:
-				return encodeURI(this.getUrlForBranch(resource.branch));
+				return this.getUrlForBranch(resource.branch);
 			case RemoteResourceType.Branches:
-				return encodeURI(this.getUrlForBranches());
+				return this.getUrlForBranches();
 			case RemoteResourceType.Commit:
-				return encodeURI(this.getUrlForCommit(resource.sha));
+				return this.getUrlForCommit(resource.sha);
 			case RemoteResourceType.Comparison: {
-				const url = this.getUrlForComparison?.(resource.ref1, resource.ref2, resource.notation ?? '...');
-				return url != null ? encodeURI(url) : undefined;
+				return this.getUrlForComparison?.(resource.base, resource.compare, resource.notation ?? '...');
+			}
+			case RemoteResourceType.CreatePullRequest: {
+				return this.getUrlForCreatePullRequest?.(resource.base, resource.compare);
 			}
 			case RemoteResourceType.File:
-				return encodeURI(
-					this.getUrlForFile(
-						resource.fileName,
-						resource.branchOrTag != null ? resource.branchOrTag : undefined,
-						undefined,
-						resource.range,
-					),
+				return this.getUrlForFile(
+					resource.fileName,
+					resource.branchOrTag != null ? resource.branchOrTag : undefined,
+					undefined,
+					resource.range,
 				);
 			case RemoteResourceType.Repo:
-				return encodeURI(this.getUrlForRepository());
+				return this.getUrlForRepository();
 			case RemoteResourceType.Revision:
-				return encodeURI(
-					this.getUrlForFile(
-						resource.fileName,
-						resource.branchOrTag != null ? resource.branchOrTag : undefined,
-						resource.sha != null ? resource.sha : undefined,
-						resource.range,
-					),
+				return this.getUrlForFile(
+					resource.fileName,
+					resource.branchOrTag != null ? resource.branchOrTag : undefined,
+					resource.sha != null ? resource.sha : undefined,
+					resource.range,
 				);
 			default:
 				return undefined;
@@ -202,7 +212,12 @@ export abstract class RemoteProvider implements RemoteProviderReference {
 
 	protected abstract getUrlForCommit(sha: string): string;
 
-	protected getUrlForComparison?(ref1: string, ref2: string, notation: '..' | '...'): string | undefined;
+	protected getUrlForComparison?(base: string, compare: string, notation: '..' | '...'): string | undefined;
+
+	protected getUrlForCreatePullRequest?(
+		base: { branch?: string; remote: { path: string; url: string } },
+		compare: { branch: string; remote: { path: string; url: string } },
+	): string | undefined;
 
 	protected abstract getUrlForFile(fileName: string, branch?: string, sha?: string, range?: Range): string;
 
@@ -214,6 +229,12 @@ export abstract class RemoteProvider implements RemoteProviderReference {
 		if (url == null) return undefined;
 
 		return env.openExternal(Uri.parse(url));
+	}
+
+	protected encodeUrl(url: string): string;
+	protected encodeUrl(url: string | undefined): string | undefined;
+	protected encodeUrl(url: string | undefined): string | undefined {
+		return url != null ? encodeURI(url).replace(/#/g, '%23') : undefined;
 	}
 }
 
@@ -244,7 +265,7 @@ export class ClientError extends Error {
 // TODO@eamodio revisit how once authenticated, all remotes are always connected, even after a restart
 
 export abstract class RichRemoteProvider extends RemoteProvider {
-	readonly type: 'simple' | 'rich' = 'rich';
+	override readonly type: 'simple' | 'rich' = 'rich';
 
 	static is(provider: RemoteProvider | undefined): provider is RichRemoteProvider {
 		return provider?.type === 'rich';
@@ -286,14 +307,6 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 		return `${WorkspaceState.ConnectedPrefix}${this.key}`;
 	}
 
-	private get disallowSyncedGlobalConnectionKey() {
-		return `${SyncedState.DisallowConnectionPrefix}${this.key}`;
-	}
-
-	private get disallowWorkspaceConnectionKey() {
-		return `${WorkspaceState.DisallowConnectionPrefix}${this.key}`;
-	}
-
 	get maybeConnected(): boolean | undefined {
 		if (this._session === undefined) return undefined;
 
@@ -310,7 +323,7 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 
 	private onAuthenticationSessionsChanged(e: AuthenticationSessionsChangeEvent) {
 		if (e.provider.id === this.authProvider.id) {
-			this.disconnect();
+			void this.ensureSession(false);
 		}
 	}
 
@@ -333,23 +346,13 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 		this._session = null;
 
 		if (disconnected) {
-			void Container.context.workspaceState.update(this.connectedKey, undefined);
-			void Container.context.workspaceState.update(this.disallowWorkspaceConnectionKey, true);
+			void Container.context.workspaceState.update(this.connectedKey, false);
 
 			this._onDidChange.fire();
 			if (!silent) {
 				_onDidChangeAuthentication.fire({ reason: 'disconnected', key: this.key });
 			}
 		}
-	}
-
-	@log()
-	async resetRemoteConnectionAuthorization() {
-		await Promise.all([
-			Container.context.workspaceState.update(this.connectedKey, undefined),
-			Container.context.workspaceState.update(this.disallowWorkspaceConnectionKey, undefined),
-			Container.context.globalState.update(this.disallowSyncedGlobalConnectionKey, undefined),
-		]);
 	}
 
 	@gate()
@@ -429,6 +432,32 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 			avatarSize?: number;
 		},
 	): Promise<Account | undefined>;
+
+	@gate()
+	@debug()
+	async getDefaultBranch(): Promise<DefaultBranch | undefined> {
+		const cc = Logger.getCorrelationContext();
+
+		const connected = this.maybeConnected ?? (await this.isConnected());
+		if (!connected) return undefined;
+
+		try {
+			const defaultBranch = await this.getProviderDefaultBranch(this._session!);
+			this.invalidClientExceptionCount = 0;
+			return defaultBranch;
+		} catch (ex) {
+			Logger.error(ex, cc);
+
+			if (ex instanceof ClientError || ex instanceof AuthenticationError) {
+				this.handleClientException();
+			}
+			return undefined;
+		}
+	}
+
+	protected abstract getProviderDefaultBranch({
+		accessToken,
+	}: AuthenticationSession): Promise<DefaultBranch | undefined>;
 
 	@gate()
 	@debug()
@@ -544,15 +573,8 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 		if (!Container.config.integrations.enabled) return undefined;
 
 		if (createIfNeeded) {
-			await Promise.all([
-				Container.context.workspaceState.update(this.connectedKey, undefined),
-				Container.context.workspaceState.update(this.disallowWorkspaceConnectionKey, undefined),
-			]);
-		} else if (
-			!Container.context.workspaceState.get<boolean>(this.connectedKey) &&
-			(Container.context.globalState.get<boolean>(this.disallowSyncedGlobalConnectionKey) ||
-				Container.context.workspaceState.get<boolean>(this.disallowWorkspaceConnectionKey))
-		) {
+			await Container.context.workspaceState.update(this.connectedKey, undefined);
+		} else if (Container.context.workspaceState.get<boolean>(this.connectedKey) === false) {
 			return undefined;
 		}
 
@@ -562,15 +584,9 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 				createIfNone: createIfNeeded,
 			});
 		} catch (ex) {
-			await Promise.all([
-				Container.context.workspaceState.update(this.connectedKey, undefined),
-				Container.context.workspaceState.update(this.disallowWorkspaceConnectionKey, true),
-			]);
+			await Container.context.workspaceState.update(this.connectedKey, undefined);
 
 			if (ex instanceof Error && ex.message.includes('User did not consent')) {
-				if (!createIfNeeded) {
-					void this.promptToAllow(true);
-				}
 				return undefined;
 			}
 
@@ -578,53 +594,20 @@ export abstract class RichRemoteProvider extends RemoteProvider {
 		}
 
 		if (session === undefined && !createIfNeeded) {
-			await Promise.all([
-				Container.context.workspaceState.update(this.connectedKey, undefined),
-				Container.context.workspaceState.update(this.disallowWorkspaceConnectionKey, true),
-			]);
-
-			void this.promptToAllow();
+			await Container.context.workspaceState.update(this.connectedKey, undefined);
 		}
 
 		this._session = session ?? null;
 		this.invalidClientExceptionCount = 0;
 
 		if (session != null) {
-			await Promise.all([
-				Container.context.workspaceState.update(this.connectedKey, true),
-				Container.context.workspaceState.update(this.disallowWorkspaceConnectionKey, undefined),
-			]);
+			await Container.context.workspaceState.update(this.connectedKey, true);
 
-			if (createIfNeeded) {
-				this._onDidChange.fire();
-				_onDidChangeAuthentication.fire({ reason: 'connected', key: this.key });
-			}
+			this._onDidChange.fire();
+			_onDidChangeAuthentication.fire({ reason: 'connected', key: this.key });
 		}
 
 		return session ?? undefined;
-	}
-
-	@gate()
-	private async promptToAllow(retry: boolean = false) {
-		const allow: MessageItem = { title: 'Allow' };
-		const deny: MessageItem = { title: 'Deny' };
-		const denyEverywhere: MessageItem = { title: 'Deny Everywhere' };
-
-		const result = await window.showInformationMessage(
-			retry
-				? `By allowing GitLens to connect to ${this.name}, it can provide a rich integration with pull requests, issues, avatars, and more.\n\nIf you choose 'Allow', you will again be prompted to authenticate with ${this.name}.`
-				: `Allow GitLens to connect to ${this.name} to provide a rich integration with pull requests, issues, avatars, and more.\n\nIf you choose 'Allow', you will be prompted to authenticate with ${this.name}.`,
-			allow,
-			deny,
-			denyEverywhere,
-		);
-
-		if (result === allow) {
-			void this.connect();
-		} else if (result === denyEverywhere) {
-			setKeysForSync(this.disallowSyncedGlobalConnectionKey);
-			await Container.context.globalState.update(this.disallowSyncedGlobalConnectionKey, true);
-		}
 	}
 
 	@debug()

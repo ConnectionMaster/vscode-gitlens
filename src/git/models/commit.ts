@@ -1,11 +1,11 @@
 'use strict';
 import { Uri } from 'vscode';
+import { getAvatarUri } from '../../avatars';
 import { configuration, DateSource, DateStyle, GravatarDefaultStyle } from '../../configuration';
 import { Container } from '../../container';
 import { Dates, memoize } from '../../system';
 import { CommitFormatter } from '../formatters/formatters';
 import { GitUri } from '../gitUri';
-import { getAvatarUri } from '../../avatars';
 import { GitReference, GitRevision, GitRevisionReference, PullRequest } from './models';
 
 export interface GitAuthor {
@@ -147,11 +147,11 @@ export abstract class GitCommit implements GitRevisionReference {
 	}
 
 	@memoize()
-	async getAssociatedPullRequest(): Promise<PullRequest | undefined> {
+	async getAssociatedPullRequest(options?: { timeout?: number }): Promise<PullRequest | undefined> {
 		const remote = await Container.git.getRichRemoteProvider(this.repoPath);
 		if (remote?.provider == null) return undefined;
 
-		return Container.git.getPullRequestForCommit(this.ref, remote);
+		return Container.git.getPullRequestForCommit(this.ref, remote, options);
 	}
 
 	@memoize<GitCommit['getPreviousLineDiffUris']>(
@@ -235,8 +235,7 @@ export abstract class GitCommit implements GitRevisionReference {
 
 	@memoize()
 	getShortMessage() {
-		// eslint-disable-next-line no-template-curly-in-string
-		return CommitFormatter.fromTemplate('${message}', this, { messageTruncateAtNewLine: true });
+		return CommitFormatter.fromTemplate(`\${message}`, this, { messageTruncateAtNewLine: true });
 	}
 
 	@memoize()

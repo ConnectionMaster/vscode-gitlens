@@ -23,6 +23,7 @@ import {
 	RepositoryChangeEvent,
 } from '../git/git';
 import { GitUri } from '../git/gitUri';
+import { debug, gate, Strings } from '../system';
 import {
 	BranchNode,
 	BranchOrTagFolderNode,
@@ -33,7 +34,6 @@ import {
 	unknownGitUri,
 	ViewNode,
 } from './nodes';
-import { debug, gate, Strings } from '../system';
 import { ViewBase } from './viewBase';
 
 export class RemotesRepositoryNode extends RepositoryFolderNode<RemotesView, RemotesNode> {
@@ -49,6 +49,7 @@ export class RemotesRepositoryNode extends RepositoryFolderNode<RemotesView, Rem
 		return e.changed(
 			RepositoryChange.Config,
 			RepositoryChange.Remotes,
+			RepositoryChange.RemoteProviders,
 			RepositoryChange.Unknown,
 			RepositoryChangeComparisonMode.Any,
 		);
@@ -56,7 +57,7 @@ export class RemotesRepositoryNode extends RepositoryFolderNode<RemotesView, Rem
 }
 
 export class RemotesViewNode extends ViewNode<RemotesView> {
-	protected splatted = true;
+	protected override splatted = true;
 	private children: RemotesRepositoryNode[] | undefined;
 
 	constructor(view: RemotesView) {
@@ -111,7 +112,7 @@ export class RemotesViewNode extends ViewNode<RemotesView> {
 		return item;
 	}
 
-	async getSplattedChild() {
+	override async getSplattedChild() {
 		if (this.children == null) {
 			await this.getChildren();
 		}
@@ -121,7 +122,7 @@ export class RemotesViewNode extends ViewNode<RemotesView> {
 
 	@gate()
 	@debug()
-	refresh(reset: boolean = false) {
+	override refresh(reset: boolean = false) {
 		if (reset && this.children != null) {
 			for (const child of this.children) {
 				child.dispose();
@@ -197,7 +198,7 @@ export class RemotesView extends ViewBase<RemotesViewNode, RemotesViewConfig> {
 		);
 	}
 
-	protected filterConfigurationChanged(e: ConfigurationChangeEvent) {
+	protected override filterConfigurationChanged(e: ConfigurationChangeEvent) {
 		const changed = super.filterConfigurationChanged(e);
 		if (
 			!changed &&
@@ -207,7 +208,7 @@ export class RemotesView extends ViewBase<RemotesViewNode, RemotesViewConfig> {
 			!configuration.changed(e, 'defaultDateStyle') &&
 			!configuration.changed(e, 'defaultGravatarsStyle') &&
 			!configuration.changed(e, 'defaultTimeFormat') &&
-			!configuration.changed(e, 'integrations', 'enabled') &&
+			!configuration.changed(e, 'integrations.enabled') &&
 			!configuration.changed(e, 'sortBranchesBy')
 		) {
 			return false;
@@ -378,19 +379,19 @@ export class RemotesView extends ViewBase<RemotesViewNode, RemotesViewConfig> {
 	}
 
 	private setLayout(layout: ViewBranchesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'branches', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.branches.layout` as const, layout);
 	}
 
 	private setFilesLayout(layout: ViewFilesLayout) {
-		return configuration.updateEffective('views', this.configKey, 'files', 'layout', layout);
+		return configuration.updateEffective(`views.${this.configKey}.files.layout` as const, layout);
 	}
 
 	private setShowAvatars(enabled: boolean) {
-		return configuration.updateEffective('views', this.configKey, 'avatars', enabled);
+		return configuration.updateEffective(`views.${this.configKey}.avatars` as const, enabled);
 	}
 
 	private async setShowBranchPullRequest(enabled: boolean) {
-		await configuration.updateEffective('views', this.configKey, 'pullRequests', 'showForBranches', enabled);
-		await configuration.updateEffective('views', this.configKey, 'pullRequests', 'enabled', enabled);
+		await configuration.updateEffective(`views.${this.configKey}.pullRequests.showForBranches` as const, enabled);
+		await configuration.updateEffective(`views.${this.configKey}.pullRequests.enabled` as const, enabled);
 	}
 }

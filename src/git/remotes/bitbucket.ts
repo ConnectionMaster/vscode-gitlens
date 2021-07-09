@@ -15,7 +15,7 @@ export class BitbucketRemote extends RemoteProvider {
 	}
 
 	private _autolinks: (AutolinkReference | DynamicAutolinkReference)[] | undefined;
-	get autolinks(): (AutolinkReference | DynamicAutolinkReference)[] {
+	override get autolinks(): (AutolinkReference | DynamicAutolinkReference)[] {
 		if (this._autolinks === undefined) {
 			this._autolinks = [
 				{
@@ -33,7 +33,7 @@ export class BitbucketRemote extends RemoteProvider {
 		return this._autolinks;
 	}
 
-	get icon() {
+	override get icon() {
 		return 'bitbucket';
 	}
 
@@ -108,19 +108,19 @@ export class BitbucketRemote extends RemoteProvider {
 	}
 
 	protected getUrlForBranches(): string {
-		return `${this.baseUrl}/branches`;
+		return this.encodeUrl(`${this.baseUrl}/branches`);
 	}
 
 	protected getUrlForBranch(branch: string): string {
-		return `${this.baseUrl}/branch/${branch}`;
+		return this.encodeUrl(`${this.baseUrl}/branch/${branch}`);
 	}
 
 	protected getUrlForCommit(sha: string): string {
-		return `${this.baseUrl}/commits/${sha}`;
+		return this.encodeUrl(`${this.baseUrl}/commits/${sha}`);
 	}
 
-	protected getUrlForComparison(ref1: string, ref2: string, _notation: '..' | '...'): string {
-		return `${this.baseUrl}/branches/compare/${ref1}%0D${ref2}`;
+	protected override getUrlForComparison(base: string, compare: string, _notation: '..' | '...'): string {
+		return this.encodeUrl(`${this.baseUrl}/branches/compare/${base}%0D${compare}`).replace('%250D', '%0D');
 	}
 
 	protected getUrlForFile(fileName: string, branch?: string, sha?: string, range?: Range): string {
@@ -135,8 +135,8 @@ export class BitbucketRemote extends RemoteProvider {
 			line = '';
 		}
 
-		if (sha) return `${this.baseUrl}/src/${sha}/${fileName}${line}`;
-		if (branch) return `${this.baseUrl}/src/${branch}/${fileName}${line}`;
-		return `${this.baseUrl}?path=${fileName}${line}`;
+		if (sha) return `${this.encodeUrl(`${this.baseUrl}/src/${sha}/${fileName}`)}${line}`;
+		if (branch) return `${this.encodeUrl(`${this.baseUrl}/src/${branch}/${fileName}`)}${line}`;
+		return `${this.encodeUrl(`${this.baseUrl}?path=${fileName}`)}${line}`;
 	}
 }

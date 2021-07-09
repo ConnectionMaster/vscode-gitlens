@@ -1,10 +1,18 @@
 'use strict';
 import * as paths from 'path';
-import { Command, Selection, ThemeColor, ThemeIcon, TreeItem, TreeItemCollapsibleState, Uri } from 'vscode';
+import {
+	Command,
+	MarkdownString,
+	Selection,
+	ThemeColor,
+	ThemeIcon,
+	TreeItem,
+	TreeItemCollapsibleState,
+	Uri,
+} from 'vscode';
 import { Commands, DiffWithPreviousCommandArgs } from '../../commands';
 import { Colors, GlyphChars } from '../../constants';
 import { Container } from '../../container';
-import { FileHistoryView } from '../fileHistoryView';
 import {
 	CommitFormatter,
 	GitBranch,
@@ -14,10 +22,11 @@ import {
 	StatusFileFormatter,
 } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
+import { FileHistoryView } from '../fileHistoryView';
 import { LineHistoryView } from '../lineHistoryView';
+import { ViewsWithCommits } from '../viewBase';
 import { MergeConflictCurrentChangesNode } from './mergeConflictCurrentChangesNode';
 import { MergeConflictIncomingChangesNode } from './mergeConflictIncomingChangesNode';
-import { ViewsWithCommits } from '../viewBase';
 import { ContextValues, ViewNode, ViewRefFileNode } from './viewNode';
 
 export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits | FileHistoryView | LineHistoryView> {
@@ -28,6 +37,7 @@ export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits |
 		public commit: GitLogCommit,
 		private readonly _options: {
 			branch?: GitBranch;
+			getBranchAndTagTips?: (sha: string, options?: { compact?: boolean }) => string | undefined;
 			selection?: Selection;
 			unpublished?: boolean;
 		} = {},
@@ -35,7 +45,7 @@ export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits |
 		super(GitUri.fromFile(file, commit.repoPath, commit.sha), view, parent);
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		let message = this.commit.message;
 		const index = message.indexOf('\n');
 		if (index !== -1) {
@@ -92,6 +102,7 @@ export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits |
 		const item = new TreeItem(
 			CommitFormatter.fromTemplate(this.view.config.formats.commits.label, this.commit, {
 				dateFormat: Container.config.defaultDateFormat,
+				getBranchAndTagTips: (sha: string) => this._options.getBranchAndTagTips?.(sha, { compact: true }),
 				messageTruncateAtNewLine: true,
 			}),
 			this.commit.hasConflicts ? TreeItemCollapsibleState.Expanded : TreeItemCollapsibleState.None,
@@ -101,28 +112,11 @@ export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits |
 
 		item.description = CommitFormatter.fromTemplate(this.view.config.formats.commits.description, this.commit, {
 			dateFormat: Container.config.defaultDateFormat,
+			getBranchAndTagTips: (sha: string) => this._options.getBranchAndTagTips?.(sha, { compact: true }),
 			messageTruncateAtNewLine: true,
 		});
 
-		// eslint-disable-next-line no-template-curly-in-string
-		const status = StatusFileFormatter.fromTemplate('${status}${ (originalPath)}', this.file); // lgtm [js/template-syntax-in-string-literal]
-		item.tooltip = CommitFormatter.fromTemplate(
-			this.commit.isUncommitted
-				? `\${author} ${GlyphChars.Dash} \${id}\n${status}\n\${ago} (\${date})`
-				: `\${author}\${ (email)} ${GlyphChars.Dash} \${id}${
-						this._options.unpublished ? ' (unpublished)' : ''
-				  }\n${status}\n\${ago} (\${date})\${\n\nmessage}${this.commit.getFormattedDiffStatus({
-						expand: true,
-						prefix: '\n\n',
-						separator: '\n',
-				  })}\${\n\n${GlyphChars.Dash.repeat(2)}\nfootnotes}`,
-			this.commit,
-			{
-				dateFormat: Container.config.defaultDateFormat,
-				// messageAutolinks: true,
-				messageIndent: 4,
-			},
-		);
+		item.resourceUri = Uri.parse(`gitlens-view://commit-file/status/${this.file.status}`);
 
 		if (!this.commit.isUncommitted && this.view.config.avatars) {
 			item.iconPath = this._options.unpublished
@@ -157,7 +151,7 @@ export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits |
 			: `${ContextValues.File}+unstaged`;
 	}
 
-	getCommand(): Command | undefined {
+	override getCommand(): Command | undefined {
 		let line;
 		if (this.commit.line !== undefined) {
 			line = this.commit.line.to.line - 1;
@@ -206,10 +200,54 @@ export class FileRevisionAsCommitNode extends ViewRefFileNode<ViewsWithCommits |
 		};
 	}
 
+	override async resolveTreeItem(item: TreeItem): Promise<TreeItem> {
+		if (item.tooltip == null) {
+			item.tooltip = await this.getTooltip();
+		}
+		return item;
+	}
+
 	async getConflictBaseUri(): Promise<Uri | undefined> {
 		if (!this.commit.hasConflicts) return undefined;
 
 		const mergeBase = await Container.git.getMergeBase(this.repoPath, 'MERGE_HEAD', 'HEAD');
 		return GitUri.fromFile(this.file, this.repoPath, mergeBase ?? 'HEAD');
+	}
+
+	private async getTooltip() {
+		const remotes = await Container.git.getRemotes(this.commit.repoPath);
+		const remote = await Container.git.getRichRemoteProvider(remotes);
+
+		let autolinkedIssuesOrPullRequests;
+		let pr;
+
+		if (remote?.provider != null) {
+			[autolinkedIssuesOrPullRequests, pr] = await Promise.all([
+				Container.autolinks.getIssueOrPullRequestLinks(this.commit.message, remote),
+				Container.git.getPullRequestForCommit(this.commit.ref, remote.provider),
+			]);
+		}
+
+		const status = StatusFileFormatter.fromTemplate(`\${status}\${ (originalPath)}`, this.file);
+		const tooltip = await CommitFormatter.fromTemplateAsync(
+			`\${'$(git-commit) 'id}\${' via 'pullRequest} \u2022 ${status}\${ \u2022 changesDetail}\${'&nbsp;&nbsp;&nbsp;'tips}\n\n\${avatar} &nbsp;__\${author}__, \${ago} &nbsp; _(\${date})_ \n\n\${message}\${\n\n---\n\nfootnotes}`,
+			this.commit,
+			{
+				autolinkedIssuesOrPullRequests: autolinkedIssuesOrPullRequests,
+				dateFormat: Container.config.defaultDateFormat,
+				getBranchAndTagTips: this._options.getBranchAndTagTips,
+				markdown: true,
+				messageAutolinks: true,
+				messageIndent: 4,
+				pullRequestOrRemote: pr,
+				remotes: remotes,
+				unpublished: this._options.unpublished,
+			},
+		);
+
+		const markdown = new MarkdownString(tooltip, true);
+		markdown.isTrusted = true;
+
+		return markdown;
 	}
 }

@@ -1,12 +1,12 @@
 'use strict';
 import { commands, TextEditor, Uri, window } from 'vscode';
-import { Command, command, Commands, getRepoPathOrPrompt } from './common';
 import { TextEditorComparer, UriComparer } from '../comparers';
 import { BuiltInCommands } from '../constants';
 import { Container } from '../container';
 import { Logger } from '../logger';
 import { Messages } from '../messages';
 import { Functions } from '../system';
+import { Command, command, Commands, getRepoPathOrPrompt } from './common';
 
 export interface CloseUnchangedFilesCommandArgs {
 	uris?: Uri[];
@@ -59,7 +59,7 @@ export class CloseUnchangedFilesCommand extends Command {
 				if (editor != null) {
 					let found = false;
 					for (const e of editors) {
-						if (TextEditorComparer.equals(e, editor, { useId: true, usePosition: true })) {
+						if (TextEditorComparer.equals(e, editor, { usePosition: true })) {
 							found = true;
 							break;
 						}

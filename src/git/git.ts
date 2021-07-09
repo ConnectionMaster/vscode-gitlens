@@ -7,11 +7,11 @@ import { Uri, window, workspace } from 'vscode';
 import { GlyphChars } from '../constants';
 import { Container } from '../container';
 import { Logger } from '../logger';
-import { Objects, Strings } from '../system';
+import { Strings } from '../system';
 import { findGitPath, GitLocation } from './locator';
-import { fsExists, run, RunError, RunOptions } from './shell';
-import { GitBranchParser, GitLogParser, GitReflogParser, GitStashParser, GitTagParser } from './parsers/parsers';
 import { GitRevision } from './models/models';
+import { GitBranchParser, GitLogParser, GitReflogParser, GitStashParser, GitTagParser } from './parsers/parsers';
+import { fsExists, run, RunError, RunOptions } from './shell';
 
 export * from './models/models';
 export * from './parsers/parsers';
@@ -22,7 +22,7 @@ export { RunError } from './shell';
 
 export type GitDiffFilter = 'A' | 'C' | 'D' | 'M' | 'R' | 'T' | 'U' | 'X' | 'B' | '*';
 
-const emptyArray = (Object.freeze([]) as any) as any[];
+const emptyArray = Object.freeze([]) as unknown as any[];
 const emptyObj = Object.freeze({});
 const emptyStr = '';
 export const maxGitCliLength = 30000;
@@ -50,7 +50,8 @@ const GitWarnings = {
 	foundButNotInRevision: /Path '.*?' exists on disk, but not in/i,
 	headNotABranch: /HEAD does not point to a branch/i,
 	noUpstream: /no upstream configured for branch '(.*?)'/i,
-	unknownRevision: /ambiguous argument '.*?': unknown revision or path not in the working tree|not stored as a remote-tracking branch/i,
+	unknownRevision:
+		/ambiguous argument '.*?': unknown revision or path not in the working tree|not stored as a remote-tracking branch/i,
 	mustRunInWorkTree: /this operation must be run in a work tree/i,
 	patchWithConflicts: /Applied patch to '.*?' with conflicts/i,
 	noRemoteRepositorySpecified: /No remote repository specified\./i,
@@ -63,7 +64,7 @@ export enum GitErrorHandling {
 	Throw = 'throw',
 }
 
-export interface GitCommandOptions extends RunOptions {
+export interface GitCommandOptions extends RunOptions<BufferEncoding | 'buffer' | string> {
 	configs?: string[];
 	readonly correlationKey?: string;
 	errors?: GitErrorHandling;
@@ -89,12 +90,11 @@ export async function git<TOut extends string | Buffer>(options: GitCommandOptio
 
 	const start = process.hrtime();
 
-	const { configs, correlationKey, errors: errorHandling, ...opts } = options;
+	const { configs, correlationKey, errors: errorHandling, encoding, ...opts } = options;
 
-	const encoding = options.encoding ?? 'utf8';
 	const runOpts: RunOptions = {
 		...opts,
-		encoding: encoding === 'utf8' ? 'utf8' : encoding === 'buffer' ? 'buffer' : 'binary',
+		encoding: (encoding ?? 'utf8') === 'utf8' ? 'utf8' : 'buffer',
 		// Adds GCM environment variables to avoid any possible credential issues -- from https://github.com/Microsoft/vscode/issues/26573#issuecomment-338686581
 		// Shouldn't *really* be needed but better safe than sorry
 		env: {
@@ -131,7 +131,7 @@ export async function git<TOut extends string | Buffer>(options: GitCommandOptio
 			args.splice(0, 0, '-c', 'core.longpaths=true');
 		}
 
-		promise = run<TOut>(gitInfo.path, args, encoding, runOpts);
+		promise = run<TOut>(gitInfo.path, args, encoding ?? 'utf8', runOpts);
 
 		pendingCommands.set(command, promise);
 	} else {
@@ -183,7 +183,7 @@ export async function git<TOut extends string | Buffer>(options: GitCommandOptio
 function defaultExceptionHandler(ex: Error, cwd: string | undefined, start?: [number, number]): string {
 	const msg = ex.message || ex.toString();
 	if (msg != null && msg.length !== 0) {
-		for (const warning of Objects.values(GitWarnings)) {
+		for (const warning of Object.values(GitWarnings)) {
 			if (warning.test(msg)) {
 				const duration = start !== undefined ? `${Strings.getDurationMilliseconds(start)} ms` : emptyStr;
 				Logger.warn(
@@ -525,7 +525,7 @@ export namespace Git {
 				{
 					cwd: repoPath,
 					configs: ['-c', 'color.diff=false'],
-					encoding: options.encoding === 'utf8' ? 'utf8' : 'binary',
+					encoding: options.encoding,
 				},
 				...params,
 				'--',
@@ -578,7 +578,7 @@ export namespace Git {
 				{
 					cwd: repoPath,
 					configs: ['-c', 'color.diff=false'],
-					encoding: options.encoding === 'utf8' ? 'utf8' : 'binary',
+					encoding: options.encoding,
 					stdin: contents,
 				},
 				...params,
@@ -741,18 +741,22 @@ export namespace Git {
 		repoPath: string,
 		ref: string | undefined,
 		{
+			all,
 			authors,
 			format = 'default',
 			limit,
 			merges,
+			ordering,
 			reverse,
 			similarityThreshold,
 			since,
 		}: {
+			all?: boolean;
 			authors?: string[];
-			format?: 'refs' | 'default';
+			format?: 'default' | 'refs' | 'shortlog' | 'shortlog+stats';
 			limit?: number;
 			merges?: boolean;
+			ordering?: string | null;
 			reverse?: boolean;
 			similarityThreshold?: number | null;
 			since?: string;
@@ -760,14 +764,26 @@ export namespace Git {
 	) {
 		const params = [
 			'log',
-			`--format=${format === 'refs' ? GitLogParser.simpleRefs : GitLogParser.defaultFormat}`,
+			`--format=${
+				format === 'refs'
+					? GitLogParser.simpleRefs
+					: format === 'shortlog' || format === 'shortlog+stats'
+					? GitLogParser.shortlog
+					: GitLogParser.defaultFormat
+			}`,
 			'--full-history',
 			`-M${similarityThreshold == null ? '' : `${similarityThreshold}%`}`,
 			'-m',
 		];
 
-		if (format !== 'refs') {
+		if (format === 'default') {
 			params.push('--name-status');
+		} else if (format === 'shortlog+stats') {
+			params.push('--shortstat');
+		}
+
+		if (ordering) {
+			params.push(`--${ordering}-order`);
 		}
 
 		if (limit && !reverse) {
@@ -784,6 +800,12 @@ export namespace Git {
 
 		if (authors != null && authors.length !== 0) {
 			params.push('--use-mailmap', ...authors.map(a => `--author=${a}`));
+		} else if (format === 'shortlog') {
+			params.push('--use-mailmap');
+		}
+
+		if (all) {
+			params.push('--all');
 		}
 
 		if (ref && !GitRevision.isUncommittedStaged(ref)) {
@@ -812,6 +834,7 @@ export namespace Git {
 			firstParent = false,
 			format = 'default',
 			limit,
+			ordering,
 			renames = true,
 			reverse = false,
 			since,
@@ -822,8 +845,9 @@ export namespace Git {
 			all?: boolean;
 			filters?: GitDiffFilter[];
 			firstParent?: boolean;
-			format?: 'refs' | 'simple' | 'default';
+			format?: 'default' | 'refs' | 'simple';
 			limit?: number;
+			ordering?: string | null;
 			renames?: boolean;
 			reverse?: boolean;
 			since?: string;
@@ -838,6 +862,10 @@ export namespace Git {
 			'log',
 			`--format=${format === 'default' ? GitLogParser.defaultFormat : GitLogParser.simpleFormat}`,
 		];
+
+		if (ordering) {
+			params.push(`--${ordering}-order`);
+		}
 
 		if (limit && !reverse) {
 			params.push(`-n${limit + 1}`);
@@ -863,6 +891,10 @@ export namespace Git {
 		params.push(renames ? '--follow' : '-m');
 		if (/*renames ||*/ firstParent) {
 			params.push('--first-parent');
+			// In Git >= 2.29.0 `--first-parent` implies `-m`, so lets include it for consistency
+			if (renames) {
+				params.push('-m');
+			}
 		}
 
 		if (filters != null && filters.length !== 0) {
@@ -871,7 +903,8 @@ export namespace Git {
 
 		if (format !== 'refs') {
 			if (startLine == null) {
-				if (format === 'simple') {
+				// If this is the log of a folder, use `--name-status` to match non-file logs (for parsing)
+				if (format === 'simple' || isFolderGlob(file)) {
 					params.push('--name-status');
 				} else {
 					params.push('--numstat', '--summary');
@@ -902,7 +935,11 @@ export namespace Git {
 	export async function log__file_recent(
 		repoPath: string,
 		fileName: string,
-		{ ref, similarityThreshold }: { ref?: string; similarityThreshold?: number | null } = {},
+		{
+			ordering,
+			ref,
+			similarityThreshold,
+		}: { ordering?: string | null; ref?: string; similarityThreshold?: number | null } = {},
 	) {
 		const params = [
 			'log',
@@ -911,50 +948,88 @@ export namespace Git {
 			'--format=%H',
 		];
 
+		if (ordering) {
+			params.push(`--${ordering}-order`);
+		}
+
 		if (ref) {
 			params.push(ref);
 		}
 
-		const data = await git<string>({ cwd: repoPath, errors: GitErrorHandling.Ignore }, ...params, '--', fileName);
+		const data = await git<string>(
+			{ cwd: repoPath, configs: ['-c', 'log.showSignature=false'], errors: GitErrorHandling.Ignore },
+			...params,
+			'--',
+			fileName,
+		);
 		return data.length === 0 ? undefined : data.trim();
 	}
 
-	export async function log__find_object(repoPath: string, objectId: string, ref: string, file?: string) {
+	export async function log__find_object(
+		repoPath: string,
+		objectId: string,
+		ref: string,
+		ordering: string | null,
+		file?: string,
+	) {
 		const params = ['log', '-n1', '--no-renames', '--format=%H', `--find-object=${objectId}`, ref];
+
+		if (ordering) {
+			params.push(`--${ordering}-order`);
+		}
+
 		if (file) {
 			params.push('--', file);
 		}
 
-		const data = await git<string>({ cwd: repoPath, errors: GitErrorHandling.Ignore }, ...params);
-		return data.length === 0 ? undefined : data.trim();
-	}
-
-	export async function log__recent(repoPath: string) {
 		const data = await git<string>(
-			{ cwd: repoPath, errors: GitErrorHandling.Ignore },
-			'log',
-			'-n1',
-			'--format=%H',
-			'--',
+			{ cwd: repoPath, configs: ['-c', 'log.showSignature=false'], errors: GitErrorHandling.Ignore },
+			...params,
 		);
 		return data.length === 0 ? undefined : data.trim();
 	}
 
-	export async function log__recent_committerdate(repoPath: string) {
+	export async function log__recent(repoPath: string, ordering?: string | null) {
+		const params = ['log', '-n1', '--format=%H'];
+
+		if (ordering) {
+			params.push(`--${ordering}-order`);
+		}
+
 		const data = await git<string>(
-			{ cwd: repoPath, errors: GitErrorHandling.Ignore },
-			'log',
-			'-n1',
-			'--format=%ct',
+			{ cwd: repoPath, configs: ['-c', 'log.showSignature=false'], errors: GitErrorHandling.Ignore },
+			...params,
 			'--',
 		);
+
+		return data.length === 0 ? undefined : data.trim();
+	}
+
+	export async function log__recent_committerdate(repoPath: string, ordering?: string | null) {
+		const params = ['log', '-n1', '--format=%ct'];
+
+		if (ordering) {
+			params.push(`--${ordering}-order`);
+		}
+
+		const data = await git<string>(
+			{ cwd: repoPath, configs: ['-c', 'log.showSignature=false'], errors: GitErrorHandling.Ignore },
+			...params,
+			'--',
+		);
+
 		return data.length === 0 ? undefined : data.trim();
 	}
 
 	export function log__search(
 		repoPath: string,
 		search: string[] = emptyArray,
-		{ limit, skip, useShow }: { limit?: number; skip?: number; useShow?: boolean } = {},
+		{
+			limit,
+			ordering,
+			skip,
+			useShow,
+		}: { limit?: number; ordering?: string | null; skip?: number; useShow?: boolean } = {},
 	) {
 		const params = [
 			useShow ? 'show' : 'log',
@@ -962,14 +1037,24 @@ export namespace Git {
 			`--format=${GitLogParser.defaultFormat}`,
 			'--use-mailmap',
 		];
+
 		if (limit && !useShow) {
 			params.push(`-n${limit + 1}`);
 		}
+
 		if (skip && !useShow) {
 			params.push(`--skip=${skip}`);
 		}
 
-		return git<string>({ cwd: repoPath }, ...params, ...search);
+		if (ordering && !useShow) {
+			params.push(`--${ordering}-order`);
+		}
+
+		return git<string>(
+			{ cwd: repoPath, configs: useShow ? undefined : ['-c', 'log.showSignature=false'] },
+			...params,
+			...search,
+		);
 	}
 
 	// export function log__shortstat(repoPath: string, options: { ref?: string }) {
@@ -977,7 +1062,7 @@ export namespace Git {
 	//     if (options.ref && !GitRevision.isUncommittedStaged(options.ref)) {
 	//         params.push(options.ref);
 	//     }
-	//     return git<string>({ cwd: repoPath }, ...params, '--');
+	//     return git<string>({ cwd: repoPath, configs: ['-c', 'log.showSignature=false'] }, ...params, '--');
 	// }
 
 	export async function ls_files(
@@ -996,6 +1081,14 @@ export namespace Git {
 
 		const data = await git<string>({ cwd: repoPath, errors: GitErrorHandling.Ignore }, ...params, '--', fileName);
 		return data.length === 0 ? undefined : data.trim();
+	}
+
+	export function ls_remote(repoPath: string, remote: string, ref?: string) {
+		return git<string>({ cwd: repoPath }, 'ls-remote', remote, ref);
+	}
+
+	export function ls_remote__HEAD(repoPath: string, remote: string) {
+		return git<string>({ cwd: repoPath }, 'ls-remote', '--symref', remote, 'HEAD');
 	}
 
 	export async function ls_tree(repoPath: string, ref: string, { fileName }: { fileName?: string } = {}) {
@@ -1025,23 +1118,37 @@ export namespace Git {
 
 	export function reflog(
 		repoPath: string,
-		{ all, branch, limit, skip }: { all?: boolean; branch?: string; limit?: number; skip?: number } = {},
+		{
+			all,
+			branch,
+			limit,
+			ordering,
+			skip,
+		}: { all?: boolean; branch?: string; limit?: number; ordering?: string | null; skip?: number } = {},
 	): Promise<string> {
 		const params = ['log', '--walk-reflogs', `--format=${GitReflogParser.defaultFormat}`, '--date=iso8601'];
+
+		if (ordering) {
+			params.push(`--${ordering}-order`);
+		}
+
 		if (all) {
 			params.push('--all');
 		}
+
 		if (limit) {
 			params.push(`-n${limit}`);
 		}
+
 		if (skip) {
 			params.push(`--skip=${skip}`);
 		}
+
 		if (branch) {
 			params.push(branch);
 		}
 
-		return git<string>({ cwd: repoPath }, ...params, '--');
+		return git<string>({ cwd: repoPath, configs: ['-c', 'log.showSignature=false'] }, ...params, '--');
 	}
 
 	export function remote(repoPath: string): Promise<string> {
@@ -1109,6 +1216,7 @@ export namespace Git {
 
 	export async function rev_parse__currentBranch(
 		repoPath: string,
+		ordering: string | null,
 	): Promise<[string, string | undefined] | undefined> {
 		try {
 			const data = await git<string>(
@@ -1126,6 +1234,29 @@ export namespace Git {
 			if (GitErrors.badRevision.test(msg) || GitWarnings.noUpstream.test(msg)) {
 				if (ex.stdout != null && ex.stdout.length !== 0) {
 					return [ex.stdout, undefined];
+				}
+
+				try {
+					const data = await symbolic_ref(repoPath, 'HEAD');
+					if (data != null) return [data.trim(), undefined];
+				} catch {}
+
+				try {
+					const data = await symbolic_ref(repoPath, 'refs/remotes/origin/HEAD');
+					if (data != null) return [data.trim().substr('origin/'.length), undefined];
+				} catch (ex) {
+					if (/is not a symbolic ref/.test(ex.stderr)) {
+						try {
+							const data = await ls_remote__HEAD(repoPath, 'origin');
+							if (data != null) {
+								const match = /ref:\s(\S+)\s+HEAD/m.exec(data);
+								if (match != null) {
+									const [, branch] = match;
+									return [branch.substr('refs/heads/'.length), undefined];
+								}
+							}
+						} catch {}
+					}
 				}
 
 				const defaultBranch = (await config__get('init.defaultBranch', repoPath, { local: true })) ?? 'main';
@@ -1151,7 +1282,7 @@ export namespace Git {
 			}
 
 			if (GitWarnings.headNotABranch.test(msg)) {
-				const sha = await log__recent(repoPath);
+				const sha = await log__recent(repoPath, ordering);
 				if (sha === undefined) return undefined;
 
 				return [`(HEAD detached at ${GitRevision.shorten(sha)})`, sha];
@@ -1173,9 +1304,10 @@ export namespace Git {
 			// Keep trailing spaces which are part of the directory name
 			return data.length === 0 ? undefined : Strings.normalizePath(data.trimLeft().replace(/[\r|\n]+$/, ''));
 		} catch (ex) {
-			if (ex.code === 'ENOENT') {
+			const inDotGit = /this operation must be run in a work tree/.test(ex.stderr);
+			if (inDotGit || ex.code === 'ENOENT') {
 				// If the `cwd` doesn't exist, walk backward to see if any parent folder exists
-				let exists = await fsExists(cwd);
+				let exists = inDotGit ? false : await fsExists(cwd);
 				if (!exists) {
 					do {
 						const parent = paths.dirname(cwd);
@@ -1413,6 +1545,10 @@ export namespace Git {
 		);
 	}
 
+	export function symbolic_ref(repoPath: string, ref: string) {
+		return git<string>({ cwd: repoPath }, 'symbolic-ref', '--short', ref);
+	}
+
 	export function tag(repoPath: string) {
 		return git<string>({ cwd: repoPath }, 'tag', '-l', `--format=${GitTagParser.defaultFormat}`);
 	}
@@ -1449,4 +1585,12 @@ export namespace Git {
 			return undefined;
 		}
 	}
+}
+
+export function isFolderGlob(path: string) {
+	return paths.basename(path) === '*';
+}
+
+export function toFolderGlob(fsPath: string) {
+	return paths.join(fsPath, '*');
 }

@@ -46,14 +46,14 @@ export class SettingsWebview extends WebviewBase {
 		);
 	}
 
-	protected onShowCommand(anchor?: string) {
+	protected override onShowCommand(anchor?: string) {
 		if (anchor) {
 			this._pendingJumpToAnchor = anchor;
 		}
 		super.onShowCommand();
 	}
 
-	protected onMessageReceived(e: IpcMessage) {
+	protected override onMessageReceived(e: IpcMessage) {
 		switch (e.method) {
 			case ReadyCommandType.method:
 				onIpcCommand(ReadyCommandType, e, _params => {
@@ -86,7 +86,7 @@ export class SettingsWebview extends WebviewBase {
 		return 'GitLens Settings';
 	}
 
-	renderEndOfBody() {
+	override renderEndOfBody() {
 		const scopes: ['user' | 'workspace', string][] = [['user', 'User']];
 		if (workspace.workspaceFolders?.length) {
 			scopes.push(['workspace', 'Workspace']);
@@ -99,7 +99,7 @@ export class SettingsWebview extends WebviewBase {
 			scope: 'user',
 			scopes: scopes,
 		};
-		return `<script type="text/javascript" nonce="Z2l0bGVucy1ib290c3RyYXA=">window.bootstrap = ${JSON.stringify(
+		return `<script type="text/javascript" nonce="#{cspNonce}">window.bootstrap = ${JSON.stringify(
 			bootstrap,
 		)};</script>`;
 	}

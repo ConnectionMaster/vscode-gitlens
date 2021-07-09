@@ -1,18 +1,18 @@
 'use strict';
 import { TreeItem, TreeItemCollapsibleState, window } from 'vscode';
-import { CommitNode } from './commitNode';
-import { LoadMoreNode, MessageNode } from './common';
 import { ViewBranchesLayout } from '../../configuration';
 import { GlyphChars } from '../../constants';
 import { Container } from '../../container';
 import { emojify } from '../../emojis';
 import { GitLog, GitRevision, GitTag, GitTagReference, TagDateFormatting } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
+import { debug, gate, Iterables, Strings } from '../../system';
 import { RepositoriesView } from '../repositoriesView';
+import { TagsView } from '../tagsView';
+import { CommitNode } from './commitNode';
+import { LoadMoreNode, MessageNode } from './common';
 import { insertDateMarkers } from './helpers';
 import { RepositoryNode } from './repositoryNode';
-import { debug, gate, Iterables, Strings } from '../../system';
-import { TagsView } from '../tagsView';
 import { ContextValues, PageableViewNode, ViewNode, ViewRefNode } from './viewNode';
 
 export class TagNode extends ViewRefNode<TagsView | RepositoriesView, GitTagReference> implements PageableViewNode {
@@ -25,11 +25,11 @@ export class TagNode extends ViewRefNode<TagsView | RepositoriesView, GitTagRefe
 		super(uri, view, parent);
 	}
 
-	toClipboard(): string {
+	override toClipboard(): string {
 		return this.tag.name;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return TagNode.getId(this.tag.repoPath, this.tag.name);
 	}
 
@@ -86,7 +86,7 @@ export class TagNode extends ViewRefNode<TagsView | RepositoriesView, GitTagRefe
 
 	@gate()
 	@debug()
-	refresh(reset?: boolean) {
+	override refresh(reset?: boolean) {
 		if (reset) {
 			this._log = undefined;
 		}

@@ -15,7 +15,7 @@ export class BitbucketServerRemote extends RemoteProvider {
 	}
 
 	private _autolinks: (AutolinkReference | DynamicAutolinkReference)[] | undefined;
-	get autolinks(): (AutolinkReference | DynamicAutolinkReference)[] {
+	override get autolinks(): (AutolinkReference | DynamicAutolinkReference)[] {
 		if (this._autolinks === undefined) {
 			this._autolinks = [
 				{
@@ -33,14 +33,14 @@ export class BitbucketServerRemote extends RemoteProvider {
 		return this._autolinks;
 	}
 
-	protected get baseUrl(): string {
+	protected override get baseUrl(): string {
 		const [project, repo] = this.path.startsWith('scm/')
 			? this.path.replace('scm/', '').split('/')
 			: this.splitPath();
 		return `${this.protocol}://${this.domain}/projects/${project}/repos/${repo}`;
 	}
 
-	get icon() {
+	override get icon() {
 		return 'bitbucket';
 	}
 
@@ -115,19 +115,19 @@ export class BitbucketServerRemote extends RemoteProvider {
 	}
 
 	protected getUrlForBranches(): string {
-		return `${this.baseUrl}/branches`;
+		return this.encodeUrl(`${this.baseUrl}/branches`);
 	}
 
 	protected getUrlForBranch(branch: string): string {
-		return `${this.baseUrl}/commits?until=${branch}`;
+		return this.encodeUrl(`${this.baseUrl}/commits?until=${branch}`);
 	}
 
 	protected getUrlForCommit(sha: string): string {
-		return `${this.baseUrl}/commits/${sha}`;
+		return this.encodeUrl(`${this.baseUrl}/commits/${sha}`);
 	}
 
-	protected getUrlForComparison(ref1: string, ref2: string, _notation: '..' | '...'): string {
-		return `${this.baseUrl}/branches/compare/${ref1}%0D${ref2}`;
+	protected override getUrlForComparison(base: string, compare: string, _notation: '..' | '...'): string {
+		return this.encodeUrl(`${this.baseUrl}/branches/compare/${base}%0D${compare}`).replace('%250D', '%0D');
 	}
 
 	protected getUrlForFile(fileName: string, branch?: string, sha?: string, range?: Range): string {
@@ -141,8 +141,8 @@ export class BitbucketServerRemote extends RemoteProvider {
 		} else {
 			line = '';
 		}
-		if (sha) return `${this.baseUrl}/browse/${fileName}?at=${sha}${line}`;
-		if (branch) return `${this.baseUrl}/browse/${fileName}?at=${branch}${line}`;
-		return `${this.baseUrl}/browse/${fileName}${line}`;
+		if (sha) return `${this.encodeUrl(`${this.baseUrl}/browse/${fileName}?at=${sha}`)}${line}`;
+		if (branch) return `${this.encodeUrl(`${this.baseUrl}/browse/${fileName}?at=${branch}`)}${line}`;
+		return `${this.encodeUrl(`${this.baseUrl}/browse/${fileName}`)}${line}`;
 	}
 }

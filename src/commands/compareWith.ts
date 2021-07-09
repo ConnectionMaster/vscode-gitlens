@@ -1,5 +1,8 @@
 'use strict';
 import { TextEditor, Uri } from 'vscode';
+import { Container } from '../container';
+import { Logger } from '../logger';
+import { Messages } from '../messages';
 import {
 	ActiveEditorCommand,
 	command,
@@ -8,9 +11,6 @@ import {
 	getCommandUri,
 	getRepoPathOrActiveOrPrompt,
 } from './common';
-import { Container } from '../container';
-import { Logger } from '../logger';
-import { Messages } from '../messages';
 
 export interface CompareWithCommandArgs {
 	ref1?: string;
@@ -29,7 +29,7 @@ export class CompareWithCommand extends ActiveEditorCommand {
 		]);
 	}
 
-	protected preExecute(context: CommandContext, args?: CompareWithCommandArgs) {
+	protected override preExecute(context: CommandContext, args?: CompareWithCommandArgs) {
 		switch (context.command) {
 			case Commands.CompareWith:
 				args = { ...args };

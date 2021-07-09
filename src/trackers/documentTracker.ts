@@ -76,7 +76,7 @@ export class DocumentTracker<T> implements Disposable {
 			workspace.onDidSaveTextDocument(this.onTextDocumentSaved, this),
 		);
 
-		void this.onConfigurationChanged(configuration.initializingChangeEvent);
+		void this.onConfigurationChanged();
 	}
 
 	dispose() {
@@ -89,20 +89,19 @@ export class DocumentTracker<T> implements Disposable {
 		void this.onActiveTextEditorChanged(window.activeTextEditor);
 	}
 
-	private async onConfigurationChanged(e: ConfigurationChangeEvent) {
+	private async onConfigurationChanged(e?: ConfigurationChangeEvent) {
 		// Only rest the cached state if we aren't initializing
 		if (
-			!configuration.initializing(e) &&
-			(configuration.changed(e, 'blame', 'ignoreWhitespace') ||
-				configuration.changed(e, 'advanced', 'caching', 'enabled'))
+			e != null &&
+			(configuration.changed(e, 'blame.ignoreWhitespace') || configuration.changed(e, 'advanced.caching.enabled'))
 		) {
 			for (const d of this._documentMap.values()) {
 				(await d).reset('config');
 			}
 		}
 
-		if (configuration.changed(e, 'advanced', 'blame', 'delayAfterEdit')) {
-			this._dirtyIdleTriggerDelay = configuration.get('advanced', 'blame', 'delayAfterEdit');
+		if (configuration.changed(e, 'advanced.blame.delayAfterEdit')) {
+			this._dirtyIdleTriggerDelay = configuration.get('advanced.blame.delayAfterEdit');
 			this._dirtyIdleTriggeredDebounced = undefined;
 		}
 	}

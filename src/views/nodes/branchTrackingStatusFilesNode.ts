@@ -1,16 +1,16 @@
 'use strict';
 import * as paths from 'path';
 import { TreeItem, TreeItemCollapsibleState } from 'vscode';
-import { BranchNode } from './branchNode';
-import { BranchTrackingStatus } from './branchTrackingStatusNode';
 import { ViewFilesLayout } from '../../configuration';
 import { Container } from '../../container';
-import { FileNode, FolderNode } from './folderNode';
 import { GitBranch, GitFileWithCommit, GitRevision } from '../../git/git';
 import { GitUri } from '../../git/gitUri';
-import { StatusFileNode } from './statusFileNode';
-import { Arrays, Iterables, Objects, Strings } from '../../system';
+import { Arrays, Iterables, Strings } from '../../system';
 import { ViewsWithCommits } from '../viewBase';
+import { BranchNode } from './branchNode';
+import { BranchTrackingStatus } from './branchTrackingStatusNode';
+import { FileNode, FolderNode } from './folderNode';
+import { StatusFileNode } from './statusFileNode';
 import { ContextValues, ViewNode } from './viewNode';
 
 export class BranchTrackingStatusFilesNode extends ViewNode<ViewsWithCommits> {
@@ -34,7 +34,7 @@ export class BranchTrackingStatusFilesNode extends ViewNode<ViewsWithCommits> {
 		this.repoPath = status.repoPath;
 	}
 
-	get id(): string {
+	override get id(): string {
 		return BranchTrackingStatusFilesNode.getId(
 			this.status.repoPath,
 			this.status.ref,
@@ -47,7 +47,11 @@ export class BranchTrackingStatusFilesNode extends ViewNode<ViewsWithCommits> {
 	async getChildren(): Promise<ViewNode[]> {
 		const log = await Container.git.getLog(this.repoPath, {
 			limit: 0,
-			ref: GitRevision.createRange(this.status.upstream, this.branch.ref),
+			ref: GitRevision.createRange(
+				this.status.upstream,
+				this.branch.ref,
+				this.direction === 'behind' ? '...' : '..',
+			),
 		});
 
 		const files =
@@ -66,19 +70,16 @@ export class BranchTrackingStatusFilesNode extends ViewNode<ViewsWithCommits> {
 
 		const groups = Arrays.groupBy(files, s => s.fileName);
 
-		let children: FileNode[] = [
-			...Iterables.map(
-				Objects.values(groups),
-				files =>
-					new StatusFileNode(
-						this.view,
-						this,
-						this.repoPath,
-						files[files.length - 1],
-						files.map(s => s.commit),
-					),
-			),
-		];
+		let children: FileNode[] = Object.values(groups).map(
+			files =>
+				new StatusFileNode(
+					this.view,
+					this,
+					this.repoPath,
+					files[files.length - 1],
+					files.map(s => s.commit),
+				),
+		);
 
 		if (this.view.config.files.layout !== ViewFilesLayout.List) {
 			const hierarchy = Arrays.makeHierarchical(
@@ -102,7 +103,10 @@ export class BranchTrackingStatusFilesNode extends ViewNode<ViewsWithCommits> {
 	}
 
 	async getTreeItem(): Promise<TreeItem> {
-		const stats = await Container.git.getChangedFilesCount(this.repoPath, `${this.status.upstream}...`);
+		const stats = await Container.git.getChangedFilesCount(
+			this.repoPath,
+			`${this.status.upstream}${this.direction === 'behind' ? '..' : '...'}`,
+		);
 		const files = stats?.files ?? 0;
 
 		const label = `${Strings.pluralize('file', files)} changed`;

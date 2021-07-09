@@ -2,6 +2,8 @@
 import { GlyphChars } from '../../constants';
 import { Container } from '../../container';
 import { GitReference, GitStatus, Repository } from '../../git/git';
+import { CommandQuickPickItem, GitCommandQuickPickItem } from '../../quickpicks';
+import { Strings } from '../../system';
 import {
 	PartialStepState,
 	pickRepositoryStep,
@@ -11,8 +13,6 @@ import {
 	StepResult,
 	StepState,
 } from '../quickCommand';
-import { CommandQuickPickItem, GitCommandQuickPickItem } from '../../quickpicks';
-import { Strings } from '../../system';
 
 interface Context {
 	repos: Repository[];
@@ -49,7 +49,7 @@ export class StatusGitCommand extends QuickCommand<State> {
 		};
 	}
 
-	get canConfirm() {
+	override get canConfirm() {
 		return false;
 	}
 
@@ -91,7 +91,8 @@ export class StatusGitCommand extends QuickCommand<State> {
 					refType: 'branch',
 					name: context.status.branch,
 					remote: false,
-					tracking: context.status.upstream,
+					upstream:
+						context.status.upstream != null ? { name: context.status.upstream, missing: false } : undefined,
 				}),
 				{ icon: false },
 			)}`;
